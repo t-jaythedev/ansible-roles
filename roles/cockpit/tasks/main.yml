@@ -1,0 +1,39 @@
+---
+- name: Remove Cockpit web console (retired service)
+  ansible.builtin.apt:
+    name:
+      - cockpit
+      - cockpit-system
+    state: absent
+    purge: true
+    autoremove: true
+  when: cockpit_remove | bool
+
+- name: Ensure cockpit socket is stopped and disabled
+  ansible.builtin.systemd:
+    name: cockpit.socket
+    state: stopped
+    enabled: false
+    masked: true
+  failed_when: false
+  when: cockpit_remove | bool
+
+- name: Remove Cockpit configuration directory
+  ansible.builtin.file:
+    path: /etc/cockpit
+    state: absent
+  when: cockpit_remove | bool
+
+- name: Remove cockpit systemd overrides
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+    - /etc/systemd/system/cockpit.socket.d
+    - /etc/systemd/system/cockpit.service.d
+  when: cockpit_remove | bool
+
+- name: Reload systemd after cockpit removal
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: cockpit_remove | bool

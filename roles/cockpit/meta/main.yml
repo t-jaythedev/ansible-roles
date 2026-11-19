@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: cockpit
+  author: Dave The Lobster
+  description: Remove the Cockpit web console (retired service).
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+        - questing
+  galaxy_tags:
+    - cockpit
+    - removal
+    - cleanup
+dependencies: []

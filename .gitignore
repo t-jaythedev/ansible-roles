@@ -1,0 +1,36 @@
+# --- secrets: never commit these ---
+*.vault.yml
+*.vault.yaml
+*.vault
+vault/
+secrets/
+.vault_pass
+.vault_password
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.p12
+*.pfx
+*.ovpn
+credentials*
+*credentials*
+
+# --- runtime / transient ---
+*.retry
+*.log
+*.tmp
+.ansible/
+.cache/
+*.retry
+
+# --- local overrides ---
+inventory/local/
+group_vars/**/local.yml
+group_vars/**/local.yaml
+
+# --- editor / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp

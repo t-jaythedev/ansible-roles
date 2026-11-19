@@ -1,0 +1,3 @@
+---
+# Set to false to leave cockpit installed (e.g. on a host you still use it on).
+cockpit_remove: true
