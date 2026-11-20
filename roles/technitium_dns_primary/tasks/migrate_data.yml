@@ -18,10 +18,26 @@
 # This hook is idempotent: if the legacy container is already gone, there is
 # nothing to remove and the run is a no-op.
 
+# `docker ps -a`, NOT `docker ps`. A stopped container still HOLDS the name,
+# and Compose still refuses to create one with that name:
+#
+#   Conflict. The container name "/technitium-dns" is already in use by
+#   container "bfee33da...".
+#
+# A plain `docker ps` lists only RUNNING containers, so a legacy container that
+# a previous failed attempt had already stopped was invisible to this check -
+# the hook skipped the removal, and the conflict happened anyway.
 - name: Check whether the legacy Technitium container is still present
   ansible.builtin.command:
-    cmd: docker ps --filter name=^/technitium-dns$ --format '{{{{ .ID }}}}'
+    cmd: docker ps -a --filter name=^/technitium-dns$ --format '{{{{ .ID }}}}'
   register: technitium_dns_primary_legacy_container
+  changed_when: false
+  failed_when: false
+
+- name: Check whether the legacy Technitium container is still running
+  ansible.builtin.command:
+    cmd: docker ps --filter name=^/technitium-dns$ --format '{{{{ .ID }}}}'
+  register: technitium_dns_primary_legacy_running
   changed_when: false
   failed_when: false
 
@@ -31,7 +47,10 @@
   register: technitium_dns_primary_legacy_stop
   changed_when: technitium_dns_primary_legacy_stop.stdout | length > 0
   failed_when: false
-  when: technitium_dns_primary_legacy_container.stdout | default('') | length > 0
+  # Only stop it if it is actually RUNNING. `docker stop` on an already-stopped
+  # container succeeds but reports changed, which would stop the role ever
+  # proving `changed=0`.
+  when: technitium_dns_primary_legacy_running.stdout | default('') | length > 0
 
 - name: Remove the legacy Technitium container so its name is free
   ansible.builtin.command:

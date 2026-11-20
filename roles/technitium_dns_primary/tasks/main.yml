@@ -4,7 +4,28 @@
 # The data binds are absolute and stay where they are, so there is nothing to
 # migrate. The only change is where the compose file lives and how the
 # container is started.
+#
+# THE MIGRATION HOOK PATH IS PASSED THE SAME WAY EVERY OTHER ROLE PASSES IT.
+#
+# This role was originally written with the older mechanism - a
+# `docker_compose_migration_tasks` list in its defaults - and was never moved
+# onto the `set_fact` pattern the other roles use. The consequence was silent:
+# the base role's `when: docker_compose_migration_hook | length > 0` guard found
+# the variable empty, SKIPPED the hook entirely, and went straight to bringing
+# the project up - which then failed with a container name conflict, because
+# the hook that would have removed the legacy container never ran.
+#
+# The skip is visible in the log and reads like nothing is wrong:
+#
+#   TASK [docker_compose : Run the caller's data migration hook]
+#   skipping: [dns-primary]
+
+- name: Record the path to this role's migration hook
+  ansible.builtin.set_fact:
+    docker_compose_migration_hook_fact: "{{ role_path }}/tasks/migrate_data.yml"
 
 - name: Include the Docker Compose base role
   ansible.builtin.include_role:
     name: docker_compose
+  vars:
+    docker_compose_migration_hook: "{{ docker_compose_migration_hook_fact }}"
