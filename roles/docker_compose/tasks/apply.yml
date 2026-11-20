@@ -65,10 +65,25 @@
   # question we actually care about: is the service answering? A project with
   # no published ports (host networking) falls through to the container check,
   # which is the best available signal for it.
+  # The container count comes from `docker ps -q` rather than a --format
+  # template. A Go template inside a Jinja template needs four braces to
+  # survive, and it is easy to get wrong - and a wrong one fails with
+  # "Syntax error in template: unexpected '.'" at run time, which is a
+  # confusing way to learn that.
+  #
+  # The containers are found by their COMPOSE PROJECT LABEL, not by name.
+  # A container name and a compose project name are NOT the same thing and
+  # usually differ: the project `technitium_dns` holds a container called
+  # `technitium-dns`. Filtering on the name matched nothing at all, so the
+  # check saw zero containers and waited out every retry.
+  #
+  # The label is also the correct question to ask. "Does this PROJECT have a
+  # running container?" is what the role needs to know, and the label is what
+  # ties a container to its project.
   ansible.builtin.command:
     cmd: >-
-      docker ps --filter name={{ docker_compose_project_name }} --status running
-      --format '{{{{ .Names }}}}' | wc -l
+      docker ps --filter label=com.docker.compose.project={{ docker_compose_project_name }}
+      --filter status=running -q | wc -l
   register: docker_compose_ready
   changed_when: false
   # A service that has just been created is NOT yet serving. NPM in particular

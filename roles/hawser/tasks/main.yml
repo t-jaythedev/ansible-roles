@@ -18,6 +18,17 @@
       plaintext in a file on disk and in version control.
     quiet: true
 
+# THE MIGRATION HOOK PATH IS PASSED THE SAME WAY EVERY OTHER ROLE PASSES IT.
+#
+# The hook removes the legacy `docker run` container, which is holding the name
+# `hawser` that the compose project needs. Without it the project fails to
+# come up with a name conflict and the role never gets to prove itself.
+- name: Record the path to this role's migration hook
+  ansible.builtin.set_fact:
+    docker_compose_migration_hook_fact: "{{ role_path }}/tasks/migrate_data.yml"
+
 - name: Include the Docker Compose base role
   ansible.builtin.include_role:
     name: docker_compose
+  vars:
+    docker_compose_migration_hook: "{{ docker_compose_migration_hook_fact }}"

@@ -1,0 +1,66 @@
+---
+# The hawser container was previously started with `docker run`. There was no
+# compose file, so there is nothing to copy and nothing to move: the data
+# binds are absolute paths under /opt/hawser-stacks/ and they stay exactly
+# where they are.
+#
+# What DOES have to happen is the NAME. The legacy container is holding the
+# name `hawser`, and Compose refuses to create a container with a name that
+# is already in use:
+#
+#   Error response from daemon: Conflict. The container name "/hawser" is
+#   already in use by container "59ad94db...".
+#
+# So the legacy container is stopped and REMOVED, which frees the name for the
+# compose project to take. The DATA is untouched - it lives in the bind mounts,
+# not in the container - so removing the container loses nothing.
+#
+# This hook is idempotent: if the legacy container is already gone, there is
+# nothing to remove and the run is a no-op.
+#
+# `docker ps -a`, NOT `docker ps`. A stopped container still HOLDS the name,
+# and Compose still refuses to create one with that name.
+- name: Check whether the legacy hawser container is still present
+  ansible.builtin.command:
+    cmd: docker ps -a --filter name=hawser -q
+  register: hawser_legacy_container
+  changed_when: false
+  failed_when: false
+
+- name: Check whether the legacy hawser container is still running
+  ansible.builtin.command:
+    cmd: docker ps --filter name=hawser -q
+  register: hawser_legacy_running
+  changed_when: false
+  failed_when: false
+
+- name: Stop the legacy hawser container
+  ansible.builtin.command:
+    cmd: docker stop hawser
+  register: hawser_legacy_stop
+  changed_when: hawser_legacy_stop.stdout | length > 0
+  failed_when: false
+  # Only stop it if it is actually RUNNING. `docker stop` on an already-stopped
+  # container succeeds but reports changed, which would stop the role ever
+  # proving `changed=0`.
+  when: hawser_legacy_running.stdout | default('') | length > 0
+
+- name: Remove the legacy hawser container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm hawser
+  register: hawser_legacy_rm
+  changed_when: hawser_legacy_rm.stdout | length > 0
+  failed_when: false
+  when: hawser_legacy_container.stdout | default('') | length > 0
+
+- name: Report that the legacy hawser container was removed
+  ansible.builtin.debug:
+    msg: >-
+      The legacy hawser container was removed so the compose project could take
+      its name. Its DATA was not touched - the stacks live in the bind mount at
+      {{ hawser_stacks_dir }}, which is outside the project directory and is not
+      moved by this role.
+      {% if hawser_legacy_container.stdout | default('') | length == 0 %}
+      The legacy container was already gone, so there was nothing to remove -
+      this run was a re-run.
+      {% endif %}
