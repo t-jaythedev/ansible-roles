@@ -1,0 +1,57 @@
+---
+# Migrate the blog's WordPress files into the project directory.
+#
+# The database needs no migration at all - it lives in a Docker volume that is
+# referenced by its exact ID and marked external, so Docker adopts the existing
+# volume rather than creating a new empty one. There is nothing to copy.
+#
+# The WordPress files are copied, never moved, so the legacy directory stays a
+# working fallback if the new project fails to come up.
+
+- name: Check whether the legacy WordPress directory still exists
+  ansible.builtin.stat:
+    path: "{{ blog_legacy_data_dir }}"
+  register: blog_legacy_data
+
+- name: Check that the named database volume is present
+  ansible.builtin.command:
+    cmd: docker volume inspect {{ blog_db_volume_name }}
+  register: blog_db_volume
+  changed_when: false
+  failed_when: false
+
+- name: Fail if the database volume is missing
+  ansible.builtin.assert:
+    that:
+      - blog_db_volume.rc == 0
+    fail_msg: >-
+      The blog's database volume {{ blog_db_volume_name }} is not present on this
+      host. It holds every WordPress post. Do NOT let the role create a new
+      empty volume in its place - restore the volume first.
+    quiet: true
+
+- name: Stop the blog container before copying its files
+  ansible.builtin.command:
+    cmd: docker stop blog
+  register: blog_stop
+  changed_when: blog_stop.stdout | length > 0
+  when: blog_legacy_data.stat.exists | default(false) | bool
+  failed_when: false
+
+- name: Copy the WordPress files into the project directory
+  ansible.builtin.copy:
+    src: "{{ blog_legacy_data_dir }}/"
+    dest: "{{ blog_data_dir }}/"
+    remote_src: true
+    owner: www-data
+    group: www-data
+    mode: preserve
+  register: blog_copy
+  when: blog_legacy_data.stat.exists | default(false) | bool
+
+- name: Remove the legacy blog containers so their names are free
+  ansible.builtin.command:
+    cmd: docker rm blog blog_db
+  register: blog_rm
+  changed_when: blog_rm.stdout | length > 0
+  failed_when: false

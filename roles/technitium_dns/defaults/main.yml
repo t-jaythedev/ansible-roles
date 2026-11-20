@@ -1,0 +1,58 @@
+---
+# Technitium DNS - the fallback resolver (dns-2), as a managed Compose project.
+#
+# This container was previously started with `docker run`. There was no compose
+# file, so this role reconstructs one from the running container.
+#
+# The critical detail is the PORT BINDING. The DNS ports are bound to
+# 192.168.1.134 specifically, NOT to 0.0.0.0. That is deliberate: this is the
+# fallback resolver for a specific address on the Docker VM, and the same host
+# runs other things. Binding to all addresses would make the VM answer DNS on
+# 192.168.1.241 as well, which is a different service entirely and could
+# confuse the DHCP-provided resolver list. The explicit binding is part of the
+# service's identity and must be preserved exactly.
+
+# --- Identity ----------------------------------------------------------------
+technitium_dns_project_name: technitium_dns
+
+# --- Image and command --------------------------------------------------------
+technitium_dns_image: technitium/dns-server:latest
+
+# The original container overrode the image's entrypoint with a command. These
+# are the values from `docker inspect`, kept so the service behaves identically.
+technitium_dns_command: /etc/dns
+
+# --- Ports -------------------------------------------------------------------
+# The address this resolver answers on. DNS on 53, both TCP and UDP, and the
+# management web UI on 5380.
+technitium_dns_bind_address: 192.168.1.134
+technitium_dns_port: 53
+technitium_dns_web_port: 5380
+
+# --- Data --------------------------------------------------------------------
+# The configuration and the zone data. These binds are ABSOLUTE paths under
+# /opt/technitium/, deliberately outside the project directory: they are
+# shared with the backup arrangements and with the block-page service on this
+# host, so they do not move with the project.
+technitium_dns_config_dir: /opt/technitium/config
+technitium_dns_data_dir: /opt/technitium/data
+
+# --- Base role variables ------------------------------------------------------
+docker_compose_project_name: "{{ technitium_dns_project_name }}"
+docker_compose_install_docker: false
+docker_compose_migration_tasks:
+  - migrate_data.yml
+
+docker_compose_services:
+  dns:
+    image: "{{ technitium_dns_image }}"
+    container_name: technitium-dns-134
+    command: "{{ technitium_dns_command }}"
+    restart: unless-stopped
+    ports:
+      - "{{ technitium_dns_bind_address }}:{{ technitium_dns_port }}:53/udp"
+      - "{{ technitium_dns_bind_address }}:{{ technitium_dns_port }}:53/tcp"
+      - "{{ technitium_dns_bind_address }}:{{ technitium_dns_web_port }}:5380/tcp"
+    volumes:
+      - "{{ technitium_dns_config_dir }}:/etc/dns"
+      - "{{ technitium_dns_data_dir }}:/var/lib/dns"

@@ -1,0 +1,17 @@
+---
+# Blog - WordPress and its MariaDB, as a managed Docker Compose project.
+
+- name: Ensure the blog credentials are defined
+  ansible.builtin.assert:
+    that:
+      - blog_db_password | default('', true) | length > 0
+      - blog_db_root_password | default('', true) | length > 0
+    fail_msg: >-
+      The blog database passwords are not defined. Supply them via Ansible
+      Vault or group_vars; never commit them to this repository. They are the
+      live credentials the WordPress container uses.
+    quiet: true
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

@@ -1,0 +1,38 @@
+---
+# Migrate the Technitium DNS container into a managed Compose project.
+#
+# There is no DATA to migrate. The configuration and zone data live in two
+# absolute binds under /opt/technitium/, which deliberately stay where they
+# are - they are shared with the backup arrangements and with the block-page
+# service on this host.
+#
+# What does need doing is the CONTAINER. It was started with `docker run`, so
+# it holds the name technitium-dns-134 but belongs to no compose project.
+# Compose cannot create a container with a name that is already taken, so the
+# old one must be removed before the new project comes up - otherwise the
+# bring-up fails with a name conflict and the service is left down.
+
+- name: Check whether the legacy Technitium container is still present
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect technitium-dns-134 --format
+      {% raw %}'{{.State.Status}}'{% endraw %}
+  register: technitium_legacy_container
+  changed_when: false
+  failed_when: false
+
+- name: Stop the legacy Technitium container
+  ansible.builtin.command:
+    cmd: docker stop technitium-dns-134
+  register: technitium_stop
+  changed_when: technitium_stop.stdout | length > 0
+  failed_when: false
+  when: technitium_legacy_container.stdout | default('') | length > 0
+
+- name: Remove the legacy container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm technitium-dns-134
+  register: technitium_rm
+  changed_when: technitium_rm.stdout | length > 0
+  failed_when: false
+  when: technitium_legacy_container.stdout | default('') | length > 0

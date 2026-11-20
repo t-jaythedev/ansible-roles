@@ -1,0 +1,10 @@
+---
+# Technitium DNS - the fallback resolver (dns-2), as a managed Compose project.
+#
+# The data binds are absolute and stay where they are, so there is nothing to
+# migrate. The only change is where the compose file lives and how the
+# container is started.
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

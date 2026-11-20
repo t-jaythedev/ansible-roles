@@ -1,0 +1,125 @@
+---
+# Blog - WordPress and its MariaDB, as a managed Docker Compose project.
+#
+# Both containers were previously started with `docker run`. There was no
+# compose file, so this role reconstructs one from the running containers.
+#
+# Two things make this service unusual and are the reason it is written as
+# carefully as it is:
+#
+# 1. The database lives in an ANONYMOUS volume. Docker named it
+#    automatically because the original `docker run` did not name it. If the
+#    compose file declares a named volume, Docker creates a NEW EMPTY one and
+#    the blog comes up with no posts. The existing volume is referenced by its
+#    exact ID and marked external, so it is adopted rather than replaced.
+#
+# 2. The two containers talk to each other over a dedicated network called
+#    blog-net. WordPress reaches the database as blog_db:3306, which only
+#    resolves because both are on that network. The network is external and
+#    both services join it.
+
+# --- Identity ----------------------------------------------------------------
+blog_project_name: blog
+
+# The compose project name and the network the two services share.
+blog_network_name: blog-net
+
+# --- Images ------------------------------------------------------------------
+blog_image: wordpress:latest
+blog_db_image: mariadb:latest
+
+# The original containers overrode the image's default command. These are the
+# values from `docker inspect`, kept so the services behave identically.
+blog_command: apache2-foreground
+blog_db_command: mariadbd
+
+# --- Ports -------------------------------------------------------------------
+# The blog is published on host port 8082. NPM proxies to it.
+blog_port: 8082
+
+# The database is NOT published. It is reached only over the blog-net network.
+
+# --- Data --------------------------------------------------------------------
+# The WordPress files.
+blog_data_dir: >-
+  {{ docker_compose_root }}/{{ blog_project_name }}/html
+
+# The legacy location of the WordPress files, before normalisation.
+blog_legacy_data_dir: /home/tjay/blog
+
+# The database volume. It was an ANONYMOUS volume - Docker generated the name
+# because the original `docker run` did not name it - and it has now been given
+# a proper name, with its data copied across. The original anonymous volume is
+# still on the host as a fallback until this migration is proven.
+#
+# A named volume survives `docker volume prune`, which an anonymous one does
+# not: prune removes anonymous volumes that are not in use, and the blog's posts
+# would go with them.
+blog_db_volume_name: blog_db_data
+
+# The key the volume is declared under in the compose file. It must match the
+# key the service references it by, because Compose resolves volume references
+# against the key rather than the name.
+blog_db_volume_key: blog_db_data
+
+# --- Credentials -------------------------------------------------------------
+# These are live credentials. They are read from the environment of the
+# running containers and must be supplied via Ansible Vault in the consuming
+# project - never committed to this repository.
+blog_db_root_password: ""
+blog_db_password: ""
+
+blog_db_name: wordpress
+blog_db_user: blog
+
+# --- Base role variables ------------------------------------------------------
+docker_compose_project_name: "{{ blog_project_name }}"
+docker_compose_install_docker: false
+
+# The database volume is an existing volume that predates Compose's
+# management of it, so it is marked external and adopted rather than created.
+docker_compose_volumes:
+  - "{{ blog_db_volume_key }}"
+
+# The service network already exists and is named blog-net. It is external,
+# so the base role creates it only if it is missing and never renames it.
+docker_compose_external_networks:
+  - "{{ blog_network_name }}"
+
+docker_compose_data_dirs:
+  - "{{ blog_data_dir }}"
+
+docker_compose_migration_tasks:
+  - migrate_data.yml
+
+docker_compose_services:
+  blog:
+    image: "{{ blog_image }}"
+    container_name: blog
+    command: "{{ blog_command }}"
+    restart: unless-stopped
+    ports:
+      - "{{ blog_port }}:80"
+    environment:
+      WORDPRESS_DB_HOST: blog_db:3306
+      WORDPRESS_DB_NAME: "{{ blog_db_name }}"
+      WORDPRESS_DB_USER: "{{ blog_db_user }}"
+      WORDPRESS_DB_PASSWORD: "{{ blog_db_password }}"
+    volumes:
+      - "{{ blog_data_dir }}:/var/www/html"
+    networks:
+      - "{{ blog_network_name }}"
+  blog_db:
+    image: "{{ blog_db_image }}"
+    container_name: blog_db
+    command: "{{ blog_db_command }}"
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ blog_db_root_password }}"
+      MYSQL_DATABASE: "{{ blog_db_name }}"
+      MYSQL_USER: "{{ blog_db_user }}"
+      MYSQL_PASSWORD: "{{ blog_db_password }}"
+    volumes:
+      - "{{ blog_db_volume_key }}:/var/lib/mysql"
+    networks:
+      - "{{ blog_network_name }}"
