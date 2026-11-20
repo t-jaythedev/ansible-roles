@@ -95,9 +95,33 @@
   failed_when: docker_compose_decrypt.rc != 0
   when: docker_compose_services is defined
 
+# THE FACT IS NOT CALLED `docker_compose_services`. THAT NAME IS DELIBERATE.
+#
+# `set_fact` creates a HOST-SCOPED fact that persists for the rest of the
+# play. Four roles run in sequence on this host, and each one sets
+# `docker_compose_services` in its own defaults. If this task wrote the
+# decrypted result back to that same name, the fact set by role N would
+# survive into role N+1 - and role N+1 would render role N's services into
+# its own compose file.
+#
+# That is not theoretical. It is exactly what happened: the hawser role
+# wrote the TECHNITIUM DNS service definition into
+# /opt/compose/hawser/compose.yml, because the technitium role had run
+# first and its fact was still in scope. The hawser compose file on disk
+# contained:
+#
+#     services:
+#       dns:
+#         container_name: technitium-dns
+#
+# and the hawser project failed to come up with a technitium name conflict.
+#
+# The fact is therefore given a name that is unique to THIS role, and the
+# template reads THAT name. The role's own `docker_compose_services` from
+# its defaults is still what the decrypt task reads as its input.
 - name: Use the decrypted service definitions
   ansible.builtin.set_fact:
-    docker_compose_services: "{{ docker_compose_decrypt.stdout | from_json }}"
+    docker_compose_rendered_services: "{{ docker_compose_decrypt.stdout | from_json }}"
   when:
     - docker_compose_decrypt is defined
     - docker_compose_decrypt.stdout | default("") | trim | length > 0

@@ -14,7 +14,7 @@
     that key and the name disagree, Compose refuses to reuse it. Declaring
     both identically avoids the mismatch. -#}
 services:
-{{ docker_compose_services | default({}) | to_nice_yaml(indent=2) | indent(2, true) }}
+{{ docker_compose_rendered_services | default(docker_compose_services | default({})) | to_nice_yaml(indent=2) | indent(2, true) }}
 
 networks:
   # The project default network is declared under the key
