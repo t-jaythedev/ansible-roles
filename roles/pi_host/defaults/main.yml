@@ -1,0 +1,110 @@
+---
+# pi_host - the Raspberry Pis in the estate.
+#
+# One role for all of them, because they differ in KIND rather than in detail:
+# one runs a resolver, one runs an MPD music server, one runs both a resolver
+# and the Tailscale exit node. Per-host variables select what applies.
+#
+# SCOPE, deliberately narrow (Tee Jay's decision, 2026-11-20):
+#   This role manages the RESOLVER and the audio services. It does NOT manage
+#   `tailscaled`. The exit node is the one thing on a Pi where a mistake
+#   disconnects clients from the LAN, so it stays outside the blast radius.
+#   `tailscaled` is left enabled, active and untouched by this role.
+#
+# The systemd ordering drop-in for Unbound (below) does reference
+# `tailscaled.service` as an ordering dependency. That is NOT management of
+# it - it is the resolver waiting for the address it binds to to exist. The
+# unit is not started, stopped, enabled, disabled or reconfigured here.
+
+# --- Which services this host should run ------------------------------------
+# Set to true only for the services that belong on THIS host. A service that
+# is absent stays absent - the role does not install anything by default.
+
+pi_host_manage_unbound: false
+pi_host_manage_avahi: false
+pi_host_manage_shairport: false
+pi_host_manage_mpd: false
+
+# --- Unbound ----------------------------------------------------------------
+# The exit-node resolver. Forward-only: it forwards to the upstream resolver
+# pair and does no validation of its own, because the upstream validates.
+#
+# `module-config: "iterator"` - a validator module with no trust anchor
+# turns every query into SERVFAIL. A forward-only resolver needs no anchor
+# and no root hints.
+pi_host_unbound_port: 5335
+pi_host_unbound_package: unbound
+# Where the resolver config fragments live. A role default, NOT a task-level
+# var: a task-scoped var is not visible to the NEXT task, and this path is
+# needed by more than one task.
+pi_host_unbound_conf_dir: /etc/unbound/unbound.conf.d
+# The address the role probes the resolver on. Loopback by default: the
+# resolver must answer on loopback even when the LAN address moves.
+pi_host_unbound_probe_address: 127.0.0.1
+# A domain that must resolve for the resolver to be considered working.
+# It is a PLACEHOLDER: set it per host in the private estate repo. A real
+# domain would leak into this public repository, so the default is a name
+# that cannot resolve, and the estate overrides it with something real.
+# The check is therefore meaningful - an empty answer fails the task - and
+# no estate hostname appears in the public repo.
+pi_host_unbound_probe_domain: resolver-probe.invalid
+
+# The interfaces to bind. The Tailscale address is the delicate one: it does
+# not exist until `tailscaled` has brought up the interface, and that is the
+# entire reason the ordering drop-in below exists.
+pi_host_unbound_interfaces: []
+
+# The upstream resolvers to forward to. Two of them, and neither is a path to
+# the other, so the pair stays independent. `forward-first: yes` means a
+# forwarder that is down still resolves.
+pi_host_unbound_forward_addrs: []
+
+# Whether to install the package. Only the resolver host needs it; the audio
+# Pis do not have Unbound at all.
+pi_host_unbound_install: false
+
+# --- The boot-order fix -----------------------------------------------------
+# THE IMPORTANT PART OF THIS ROLE.
+#
+# Unbound binds to a Tailscale address that does not exist until
+# `tailscaled` has brought up `tailscale0`. The stock unit has only
+# `After=network.target`, so on boot the bind fails with
+#
+#   error: can't bind socket: Cannot assign requested address
+#   fatal error: could not open ports
+#
+# and - because the stock unit has `Restart=on-failure` with NO `RestartSec` -
+# systemd's default start-rate limit (5 starts in 10s) gives up with
+# "Start request repeated too quickly". The resolver then stays down
+# indefinitely. This is not theoretical: it happened on 2026-11-19 and the
+# resolver was down for 41 hours.
+#
+# Two things are needed together:
+#   1. order unbound AFTER tailscaled, so the address exists first
+#   2. remove the start-rate limit and add a retry delay, so a late address
+#      is retried rather than fatal
+#
+# `StartLimitIntervalSec` belongs in [Unit], NOT [Service]. Putting it in
+# [Service] makes systemd log "Unknown key name ... ignoring" and the limit
+# stays in force.
+pi_host_unbound_ordering: true
+pi_host_unbound_restart_sec: 10s
+
+# --- Audio ------------------------------------------------------------------
+# `shairport-sync` is the AirPlay receiver. `avahi-daemon` publishes the
+# service over mDNS so speakers are discoverable.
+pi_host_avahi_package: avahi-daemon
+pi_host_shairport_package: shairport-sync
+pi_host_mpd_package: mpd
+
+# --- Network ----------------------------------------------------------------
+# netplan for a Pi whose only connectivity is WiFi. The WiFi PSK is a secret
+# and MUST come from the vault - never from this file, and never from the
+# public repository. If `pi_host_wifi_psk` is empty the netplan file is left
+# alone rather than written with an empty password.
+pi_host_manage_netplan: false
+pi_host_netplan_dir: /etc/netplan
+pi_host_netplan_filename: 50-cloud-init.yaml
+pi_host_wifi_ssid: ""
+pi_host_wifi_psk: ""
+pi_host_wifi_regulatory_domain: GB

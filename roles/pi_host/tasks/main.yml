@@ -1,0 +1,31 @@
+---
+# pi_host - the Raspberry Pis in the estate.
+#
+# Deliberately narrow: the resolver and the audio services. `tailscaled` is
+# NOT managed here (Tee Jay's decision, 2026-11-20) - see the defaults file
+# for why that boundary matters.
+
+- name: Assert the audio roles are mutually consistent
+  ansible.builtin.assert:
+    that:
+      - not (pi_host_manage_mpd and not pi_host_manage_avahi)
+    fail_msg: >-
+      MPD is managed here but avahi is not. MPD publishes its library over
+      mDNS, so avahi must run on the same host for the library to be
+      discoverable.
+    quiet: true
+
+- name: Include the resolver tasks
+  ansible.builtin.include_tasks: resolver.yml
+  when: pi_host_manage_unbound | bool
+
+- name: Include the audio tasks
+  ansible.builtin.include_tasks: audio.yml
+  when: >-
+    pi_host_manage_avahi | bool or
+    pi_host_manage_shairport | bool or
+    pi_host_manage_mpd | bool
+
+- name: Include the network tasks
+  ansible.builtin.include_tasks: netplan.yml
+  when: pi_host_manage_netplan | bool

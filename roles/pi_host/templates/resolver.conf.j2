@@ -1,0 +1,40 @@
+# {{ ansible_managed }}
+# Managed by Ansible - the pi_host role.
+#
+# A forward-only resolver. It forwards everything to the upstream resolver
+# pair and does no validation of its own, because the upstream validates.
+#
+# `module-config: "iterator"` is required: a validator module with no trust
+# anchor turns every query into SERVFAIL. A forward-only resolver needs no
+# trust anchor and no root hints.
+server:
+    verbosity: 1
+{% for iface in pi_host_unbound_interfaces %}
+    interface: {{ iface }}
+{% endfor %}
+    port: {{ pi_host_unbound_port }}
+    do-ip4: yes
+    do-udp: yes
+    do-tcp: yes
+    do-ip6: yes
+    prefer-ip6: no
+    module-config: "iterator"
+    harden-glue: yes
+    edns-buffer-size: 1232
+    prefetch: yes
+    num-threads: 2
+    so-rcvbuf: 1m
+    access-control: 127.0.0.0/8 allow
+    access-control: ::1 allow
+    access-control: 192.168.0.0/16 allow
+    access-control: 100.64.0.0/10 allow
+
+    # Forward ALL queries to the upstream resolver pair - NOT to each other, so
+    # both stay independent. `forward-first: yes` means a forwarder that is
+    # down still resolves.
+    forward-zone:
+        name: "."
+        forward-first: yes
+{% for addr in pi_host_unbound_forward_addrs %}
+        forward-addr: {{ addr }}
+{% endfor %}

@@ -1,0 +1,15 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart the resolver
+  ansible.builtin.service:
+    name: unbound
+    state: restarted
+  when: pi_host_manage_unbound | bool
+
+- name: Restart networking
+  ansible.builtin.service:
+    name: systemd-networkd
+    state: restarted

@@ -1,0 +1,36 @@
+---
+# netplan for a Pi whose only connectivity is WiFi.
+#
+# The WiFi PSK is a SECRET and comes from the vault. The role refuses to
+# write the file without one rather than writing an empty password, because a
+# netplan file with an empty PSK silently fails to associate and takes the
+# host off the network.
+
+- name: Refuse to write netplan without a WiFi PSK
+  ansible.builtin.assert:
+    that:
+      - pi_host_wifi_ssid | length > 0
+      - pi_host_wifi_psk | length > 0
+    fail_msg: >-
+      pi_host_wifi_psk is empty. It must come from the Ansible vault, not from
+      a role default. Writing this file without a PSK would leave the Pi with
+      no working network connection.
+    quiet: true
+
+- name: Write the netplan configuration
+  ansible.builtin.template:
+    src: netplan.yaml.j2
+    dest: "{{ pi_host_netplan_dir }}/{{ pi_host_netplan_filename }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: pi_host_netplan_result
+
+- name: Apply the netplan configuration
+  ansible.builtin.command:
+    argv:
+      - netplan
+      - apply
+  when: pi_host_netplan_result is changed
+  changed_when: true
+  notify: Restart networking

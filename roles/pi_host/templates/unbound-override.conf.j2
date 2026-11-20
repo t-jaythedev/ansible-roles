@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+# Managed by Ansible - the pi_host role.
+[Unit]
+# Unbound binds to a Tailscale address that does not exist until `tailscaled`
+# has brought up the interface. The stock unit only orders against
+# `network.target`, so the bind fails on boot with
+#
+#   error: can't bind socket: Cannot assign requested address
+#   fatal error: could not open ports
+#
+# and the resolver never comes up. Order it AFTER tailscaled so the address
+# exists first.
+After=network.target tailscaled.service
+Wants=tailscaled.service
+# Never let systemd start-rate limiting abandon the resolver. A late
+# tailscale0 must be retried, not fatal.
+#
+# This key belongs in [Unit], NOT [Service]. In [Service] systemd logs
+# "Unknown key name 'StartLimitIntervalSec' ... ignoring" and the limit
+# stays in force.
+StartLimitIntervalSec=0
+
+[Service]
+# The stock unit has Restart=on-failure with NO RestartSec, so the default
+# 10s start-rate limit (5 starts) gives up after a few rapid failures and the
+# resolver stays down indefinitely. RestartSec=10s keeps it retrying until the
+# address appears.
+RestartSec={{ pi_host_unbound_restart_sec }}

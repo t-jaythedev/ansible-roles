@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+# Managed by Ansible - the pi_host role.
+#
+# The WiFi PSK below comes from the Ansible vault. It is never stored in the
+# public role repository.
+network:
+  version: 2
+  ethernets:
+    eth0:
+      optional: true
+      dhcp4: true
+  wifis:
+    wlan0:
+      optional: true
+      dhcp4: true
+      regulatory-domain: "{{ pi_host_wifi_regulatory_domain }}"
+      access-points:
+        "{{ pi_host_wifi_ssid }}":
+          auth:
+            key-management: "psk"
+            password: "{{ pi_host_wifi_psk }}"

@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: pi_host
+  author: Dave The Lobster
+  description: >-
+    The Raspberry Pis in the estate - the forward-only resolver and the audio
+    services. Does not manage tailscaled.
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - raspberrypi
+    - dns
+    - audio
+dependencies: []

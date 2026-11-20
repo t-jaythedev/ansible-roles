@@ -1,0 +1,68 @@
+---
+# The resolver: Unbound, forward-only, plus the boot-order fix.
+
+- name: Install Unbound
+  ansible.builtin.apt:
+    name: "{{ pi_host_unbound_package }}"
+    state: present
+    update_cache: false
+  when: pi_host_unbound_install | bool
+
+- name: Ensure the Unbound configuration directory exists
+  ansible.builtin.file:
+    path: "{{ pi_host_unbound_conf_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the resolver configuration
+  ansible.builtin.template:
+    src: resolver.conf.j2
+    dest: "{{ pi_host_unbound_conf_dir }}/pi-host-resolver.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/unbound-checkconf %s
+  notify: Restart the resolver
+
+- name: Install the systemd ordering drop-in
+  ansible.builtin.template:
+    src: unbound-override.conf.j2
+    dest: /etc/systemd/system/unbound.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart the resolver
+  when: pi_host_unbound_ordering | bool
+
+- name: Ensure the resolver is enabled and running
+  ansible.builtin.service:
+    name: unbound
+    enabled: true
+    state: started
+  notify: Restart the resolver
+
+- name: Wait for the resolver to actually be listening
+  ansible.builtin.wait_for:
+    port: "{{ pi_host_unbound_port }}"
+    host: "{{ pi_host_unbound_probe_address }}"
+    state: started
+    timeout: 30
+
+- name: Prove the resolver answers a real query
+  ansible.builtin.command:
+    argv:
+      - dig
+      - +short
+      - +time=3
+      - +tries=1
+      - -p
+      - "{{ pi_host_unbound_port }}"
+      - "@{{ pi_host_unbound_probe_address }}"
+      - "{{ pi_host_unbound_probe_domain }}"
+  register: pi_host_unbound_probe
+  changed_when: false
+  failed_when: pi_host_unbound_probe.stdout | length == 0

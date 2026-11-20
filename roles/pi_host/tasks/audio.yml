@@ -1,0 +1,58 @@
+---
+# The audio services: avahi (mDNS discovery), shairport-sync (AirPlay),
+# and MPD (the music library server).
+#
+# NOTE ON THE PARKED JAM VOICE SERVICES
+#
+# The plan for Tranche 4 said the JAM voice services must be expressed as a
+# deliberate stopped state. Live survey on 2026-11-20 found there is NO JAM
+# systemd unit on either speaker Pi - not a stopped one, not a disabled one.
+# Nothing matching jam/voice/assist exists in the unit file list, and nothing
+# listens on :8099.
+#
+# So there is no unit to express. What exists is: the audio services below,
+# which are enabled and running. This role manages those and does not attempt
+# to represent a JAM service that is not installed. If a JAM unit is ever
+# installed, it gets its own explicit entry here rather than being implied.
+
+- name: Install avahi
+  ansible.builtin.apt:
+    name: "{{ pi_host_avahi_package }}"
+    state: present
+    update_cache: false
+  when: pi_host_manage_avahi | bool
+
+- name: Ensure avahi is enabled and running
+  ansible.builtin.service:
+    name: avahi-daemon
+    enabled: true
+    state: started
+  when: pi_host_manage_avahi | bool
+
+- name: Install shairport-sync
+  ansible.builtin.apt:
+    name: "{{ pi_host_shairport_package }}"
+    state: present
+    update_cache: false
+  when: pi_host_manage_shairport | bool
+
+- name: Ensure shairport-sync is enabled and running
+  ansible.builtin.service:
+    name: shairport-sync
+    enabled: true
+    state: started
+  when: pi_host_manage_shairport | bool
+
+- name: Install MPD
+  ansible.builtin.apt:
+    name: "{{ pi_host_mpd_package }}"
+    state: present
+    update_cache: false
+  when: pi_host_manage_mpd | bool
+
+- name: Ensure MPD is enabled and running
+  ansible.builtin.service:
+    name: mpd
+    enabled: true
+    state: started
+  when: pi_host_manage_mpd | bool
