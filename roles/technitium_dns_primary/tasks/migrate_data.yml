@@ -29,14 +29,17 @@
 # the hook skipped the removal, and the conflict happened anyway.
 - name: Check whether the legacy Technitium container is still present
   ansible.builtin.command:
-    cmd: docker ps -a --filter name=^/technitium-dns$ --format '{{ .ID }}'
+    # `-q` prints ONLY the container IDs, with no format template at all. A
+    # `--format '{{ .ID }}'` template failed to parse here - Jinja rejects
+    # it - and `-q` needs no template, so there is nothing to get wrong.
+    cmd: docker ps -a --filter name=technitium-dns -q
   register: technitium_dns_primary_legacy_container
   changed_when: false
   failed_when: false
 
 - name: Check whether the legacy Technitium container is still running
   ansible.builtin.command:
-    cmd: docker ps --filter name=^/technitium-dns$ --format '{{ .ID }}'
+    cmd: docker ps --filter name=technitium-dns -q
   register: technitium_dns_primary_legacy_running
   changed_when: false
   failed_when: false
