@@ -2,11 +2,11 @@
 
 Reusable Ansible roles for self-hosted Linux estates.
 
-Built from the working setup behind [tjayhosting.co.uk](https://tjayhosting.co.uk) -
-a fully self-hosted stack (Nextcloud, Matrix, Pi-hole/Unbound, Jellyfin, Immich,
-Home Assistant, Nginx Proxy Manager, and a lot of things that do not have a
-homepage). The roles here are the generic parts; the estate-specific values live
-in a private repo.
+Built from a working self-hosted estate - Nextcloud, Matrix, Pi-hole/Unbound,
+Jellyfin, Immich, Home Assistant, Nginx Proxy Manager, and a lot of things that
+do not have a homepage. The roles here are the generic parts; the
+estate-specific values (hostnames, addresses, domains, credentials) live in a
+separate private repository and are never committed here.
 
 ## Philosophy
 
