@@ -1,0 +1,87 @@
+---
+# Technitium DNS - the PRIMARY resolver, as a managed Compose project.
+#
+# This is the resolver on the Gen8 box. Its sibling on the Docker VM is the
+# `technitium_dns` role, which serves the same product as the FALLBACK.
+# They are separate roles because they are separate hosts with separate
+# bindings, separate data and separate responsibilities - not because the
+# product differs.
+#
+# This container was previously started with `docker run`. There was NO
+# compose file, so this role reconstructs one from the running container.
+# Every value below was read from `docker inspect` on 2026-11-20.
+#
+# THE PORT BINDINGS ARE DELIBERATELY 0.0.0.0 - DO NOT "TIGHTEN" THEM.
+#
+# The sibling on the Docker VM binds its DNS ports to its specific address
+# and that is right there: the Docker VM runs many things, and a resolver
+# answering on every interface would answer on the Docker bridge address too,
+# which can confuse the DHCP-provided resolver list.
+#
+# This host is different. It IS the primary resolver, the DHCP server hands
+# clients its address, and the estate's current, working state is that it
+# answers on every interface. Changing that is a live change to how the whole
+# house resolves DNS, and it does not belong in the same tranche that moves
+# four containers around.
+#
+# Tee Jay's decision, 2026-11-20 19:12: leave the DNS bindings as they are.
+# If it is ever tightened, it is a separate, tested change - and the
+# `access-control` rules inside Technitium (not the port bindings) are what
+# actually decide who may query it.
+
+# --- Identity ----------------------------------------------------------------
+technitium_dns_primary_project_name: technitium_dns
+
+# --- Image and command --------------------------------------------------------
+technitium_dns_primary_image: technitium/dns-server:latest
+
+# The container overrode the image's entrypoint with a command. These are the
+# values from `docker inspect`, kept so the service behaves identically.
+technitium_dns_primary_command: /etc/dns
+
+# --- Ports -------------------------------------------------------------------
+# DNS on 53 (TCP and UDP), the web UI on 5380, and the block page on 80.
+# 443 and 853 are published by the image itself but not bound to a host port.
+technitium_dns_primary_dns_port: 53
+technitium_dns_primary_web_port: 5380
+technitium_dns_primary_http_port: 80
+
+# The address the ports bind to. 0.0.0.0 means every interface - see the
+# note at the top of this file for why this one is different from the
+# fallback resolver on the Docker VM.
+technitium_dns_primary_bind_address: 0.0.0.0
+
+# --- Data --------------------------------------------------------------------
+# The configuration and the zone data. These binds are ABSOLUTE paths under
+# /opt/technitium/, deliberately outside the project directory: they are
+# shared with the backup arrangements and with the block-page service on this
+# host, so they do not move with the project.
+#
+# THE `config` DIRECTORY HOLDS THE BLOCK PAGE APP. The app did not survive a
+# container rebuild on 18 Nov 2026 - `config/apps/` came back empty and the
+# apps had to be restored by hand. The app lives in the bind, not in the
+# image, so a correct migration preserves it. CHECK IT AFTER ANY REBUILD:
+#
+#   sudo ls /opt/technitium/config/apps/
+#   sudo ls "/opt/technitium/config/apps/Block Page/wwwroot/"
+technitium_dns_primary_config_dir: /opt/technitium/config
+technitium_dns_primary_data_dir: /opt/technitium/data
+
+# --- Base role variables ------------------------------------------------------
+docker_compose_project_name: "{{ technitium_dns_primary_project_name }}"
+docker_compose_install_docker: false
+
+docker_compose_services:
+  dns:
+    image: "{{ technitium_dns_primary_image }}"
+    container_name: technitium-dns
+    command: "{{ technitium_dns_primary_command }}"
+    restart: unless-stopped
+    ports:
+      - "{{ technitium_dns_primary_bind_address }}:{{ technitium_dns_primary_dns_port }}:53/udp"
+      - "{{ technitium_dns_primary_bind_address }}:{{ technitium_dns_primary_dns_port }}:53/tcp"
+      - "{{ technitium_dns_primary_bind_address }}:{{ technitium_dns_primary_http_port }}:80/tcp"
+      - "{{ technitium_dns_primary_bind_address }}:{{ technitium_dns_primary_web_port }}:5380/tcp"
+    volumes:
+      - "{{ technitium_dns_primary_config_dir }}:/etc/dns"
+      - "{{ technitium_dns_primary_data_dir }}:/var/lib/dns"

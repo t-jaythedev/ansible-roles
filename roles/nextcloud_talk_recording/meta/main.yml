@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: nextcloud_talk_recording
+  author: Dave The Lobster
+  description: Nextcloud Talk recording, as a managed Compose project.
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - docker
+    - nextcloud
+    - talk
+dependencies: []

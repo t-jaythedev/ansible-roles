@@ -1,0 +1,30 @@
+---
+# Move the talk-recording compose project from /home/tjay/talker-compose.yml
+# to the estate compose root.
+#
+# The recordings directory is an ABSOLUTE path and does not move - only the
+# compose file does. The server.conf file bind is also absolute and stays put.
+# So there is no data to copy; this hook only stops the old project and lets
+# the new one take over the container name.
+#
+# The OLD COMPOSE FILE IS LEFT IN PLACE. It is the rollback: if the new
+# project does not serve correctly, `docker compose -f
+# /home/tjay/talker-compose.yml up -d` brings the old one straight back.
+
+- name: Stop the old talk-recording project
+  ansible.builtin.command:
+    cmd: docker compose -f {{ nextcloud_talk_recording_legacy_compose_file }} down
+  register: nextcloud_talk_recording_legacy_down
+  changed_when: nextcloud_talk_recording_legacy_down.stdout | length > 0
+  failed_when: false
+  when: nextcloud_talk_recording_legacy_compose_file | default('') | length > 0
+
+- name: Report that the legacy talk-recording project can be brought back
+  ansible.builtin.debug:
+    msg: >-
+      The legacy talk-recording project was at
+      {{ nextcloud_talk_recording_legacy_compose_file }}. The compose file is
+      left in place, so it can be brought straight back with
+      `docker compose -f {{ nextcloud_talk_recording_legacy_compose_file }} up -d`
+      if the new project does not serve correctly. No data was moved - the
+      recordings and server.conf are absolute paths that did not change.

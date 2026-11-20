@@ -1,0 +1,42 @@
+---
+# Move the SearXNG project from /opt/searxng to the estate compose root.
+#
+# The data directories are relative in the compose file, so they move with the
+# project directory. COPY, never move - the old directory stays intact so a
+# failed migration is a rollback and not a rebuild.
+
+- name: Stop the old SearXNG project
+  ansible.builtin.command:
+    cmd: docker compose -f {{ searxng_legacy_compose_file }} down
+  register: searxng_legacy_down
+  changed_when: searxng_legacy_down.stdout | length > 0
+  failed_when: false
+  when: searxng_legacy_compose_file | default('') | length > 0
+
+- name: Copy the SearXNG data directories into the project directory
+  ansible.builtin.copy:
+    src: "{{ item.src }}/"
+    dest: "{{ item.dest }}/"
+    remote_src: true
+    owner: root
+    group: root
+    mode: preserve
+  loop:
+    - src: "{{ searxng_legacy_dir }}"
+      dest: "{{ docker_compose_root }}/{{ searxng_project_name }}"
+  loop_control:
+    label: "{{ item.src }}"
+  when: searxng_legacy_dir | default('') | length > 0
+
+- name: Remove the old compose project directory
+  ansible.builtin.file:
+    path: "{{ searxng_legacy_dir }}"
+    state: absent
+  when: searxng_legacy_dir | default('') | length > 0
+
+- name: Report that the legacy SearXNG project can be brought back
+  ansible.builtin.debug:
+    msg: >-
+      The legacy SearXNG project was at {{ searxng_legacy_compose_file }}.
+      Its data was copied, not moved, so the old directory can be restored by
+      hand if the new project does not serve correctly.

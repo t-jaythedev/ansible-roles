@@ -1,0 +1,115 @@
+---
+# SearXNG - the private metasearch engine, as a managed Compose project.
+#
+# This container was already managed by Compose, at /opt/searxng/docker-compose.yml.
+# This role moves it under the estate's single compose root so every project
+# lives in one predictable place.
+#
+# THE PORT BINDING IS DELIBERATE: the host's LAN address, NOT 0.0.0.0.
+# SearXNG is a search engine with a query interface; binding it to every
+# interface would publish it on the Docker bridge address and any other
+# address the host picks up. It stays on the host's LAN address only.
+#
+# The address itself is an estate value and lives in the private repo.
+#
+# (This is the OPPOSITE of technitium_dns_primary, which binds 0.0.0.0
+# because that is the estate's working state for the primary resolver. The
+# difference is deliberate and documented in each role.)
+
+# --- Identity ----------------------------------------------------------------
+searxng_project_name: searxng
+
+# --- Image -------------------------------------------------------------------
+searxng_image: searxng/searxng:latest
+
+# --- Ports -------------------------------------------------------------------
+# The address the published port binds to. Deliberately has NO default:
+# it is an estate value, and a default here would silently override whatever
+# the private inventory sets. The role's first task asserts it is set.
+searxng_bind_address: ""
+searxng_port: 8081
+searxng_container_port: 8080
+
+# The base URL the service believes it is served on. Used in the generated
+# links, so it must match how users actually reach it.
+searxng_base_url: ""
+
+# --- Data --------------------------------------------------------------------
+# These are relative to the project directory, so they move with the project.
+# The theme and the config are the parts worth keeping; searxng-data is the
+# cache.
+searxng_config_dir: config
+searxng_data_dir: searxng-data
+searxng_theme_dir: theme
+
+# The named volume holding the SearXNG virtualenv package. It is PINNED to
+# the exact name the running container already mounts.
+#
+# Compose otherwise prefixes declared volume names with the project name
+# ("searxng" from this directory), giving "searxng_searxng-pkg". That was
+# correct in practice, but it is easy to misread as a mismatch, and a rename
+# of the declared key silently creates a NEW empty volume and leaves the real
+# one orphaned - which is exactly what happened with the old "searxng-theme"
+# key (see searxng_searxng-theme, removed 18 Nov 2026). Pinning the name
+# removes the ambiguity entirely.
+searxng_package_volume: searxng_searxng-pkg
+
+# --- Base role variables ------------------------------------------------------
+docker_compose_project_name: "{{ searxng_project_name }}"
+docker_compose_install_docker: false
+# The migration hook is addressed by ROLE NAME, not by a bare filename.
+# See the base role's prepare.yml for why that matters: a bare name
+# resolves against the base role and can silently pick up another
+# role's hook.
+docker_compose_migration_role: searxng
+
+# Where the project lived before this role took it over. The migration
+# hook copies the data across from here and leaves the old compose file
+# in place as the rollback.
+searxng_legacy_dir: /opt/searxng
+searxng_legacy_compose_file: /opt/searxng/docker-compose.yml
+docker_compose_data_dirs:
+  - "{{ docker_compose_root }}/{{ searxng_project_name }}/{{ searxng_config_dir }}"
+  - "{{ docker_compose_root }}/{{ searxng_project_name }}/{{ searxng_data_dir }}"
+  - "{{ docker_compose_root }}/{{ searxng_project_name }}/{{ searxng_theme_dir }}"
+docker_compose_volumes:
+  - "{{ searxng_package_volume }}"
+
+docker_compose_services:
+  searxng:
+    image: "{{ searxng_image }}"
+    container_name: searxng
+    restart: unless-stopped
+    ports:
+      - "{{ searxng_bind_address }}:{{ searxng_port }}:{{ searxng_container_port }}"
+    volumes:
+      - "{{ searxng_config_dir }}:/etc/searxng:rw"
+      - "{{ searxng_data_dir }}:/var/cache/searxng:rw"
+      - "{{ searxng_theme_dir }}:/theme:ro"
+      - "{{ searxng_package_volume }}:/usr/local/searxng/searx"
+    environment:
+      SEARXNG_BASE_URL: "{{ searxng_base_url }}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # The theme init container applies the custom theme into the package volume
+  # on first start. It is a one-shot: restart "no", so it runs, does its job
+  # and exits.
+  theme-init:
+    image: "{{ searxng_image }}"
+    container_name: searxng-theme-init
+    restart: "no"
+    depends_on:
+      - searxng
+    volumes:
+      - "{{ searxng_theme_dir }}:/theme:ro"
+      - "{{ searxng_package_volume }}:/usr/local/searxng/searx"
+    entrypoint: ["/bin/sh", "/theme/apply-theme.sh"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

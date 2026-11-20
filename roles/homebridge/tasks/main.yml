@@ -1,6 +1,21 @@
 ---
 # Homebridge - the Apple HomeKit bridge.
 
+# The migration hook is this role's own file. The path is RESOLVED HERE,
+# in this role's own task, because `role_path` in an include_role vars block
+# is evaluated in the BASE role's context - not the caller's. Verified:
+#   in this task:      role_path=.../roles/<this role>
+#   in include vars:   role_path=.../roles/docker_compose
+#
+# A bare filename resolves against the base role and picks up ANOTHER role's
+# hook. A role name leaks across include_role boundaries and recurses. So the
+# resolved path is stashed in a fact and the base role includes THAT.
+- name: Record the path to this role's migration hook
+  ansible.builtin.set_fact:
+    docker_compose_migration_hook_fact: "{{ role_path }}/tasks/migrate_data.yml"
+
 - name: Include the Docker Compose base role
   ansible.builtin.include_role:
     name: docker_compose
+  vars:
+    docker_compose_migration_hook: "{{ docker_compose_migration_hook_fact }}"

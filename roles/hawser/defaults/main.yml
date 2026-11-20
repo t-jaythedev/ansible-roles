@@ -1,0 +1,71 @@
+---
+# Hawser - the remote Docker agent for this host, as a managed Compose
+# project.
+#
+# Hawser is what lets the Dockhand UI manage this host's containers from
+# elsewhere. It runs here as a plain `docker run` with NO compose file, so
+# this role reconstructs one from the running container. Every value below was
+# read from `docker inspect` on 2026-11-20.
+#
+# THIS ROLE MOUNTS THE DOCKER SOCKET AND HOLDS A SECRET. Two things follow
+# from that, and both are deliberate:
+#
+# 1. The socket mount gives this container full control of the Docker daemon
+#    on this host. That is what hawser IS - it is not a mistake to preserve.
+# 2. The connection token is a credential. It lives in the Ansible vault, NOT
+#    in this role, NOT in the public repository, and NOT in a compose file on
+#    disk in plaintext. The role refuses to write the compose file without it.
+#
+# Note the asymmetry with the `technitium_dns_primary` role: the Technitium
+# ports bind to 0.0.0.0 because that is the estate's working state, but the
+# hawser token is vaulted because a credential in plaintext on disk and in
+# git is a different kind of problem entirely.
+
+# --- Identity ----------------------------------------------------------------
+hawser_project_name: hawser
+
+# --- Image -------------------------------------------------------------------
+hawser_image: ghcr.io/finsys/hawser:latest
+
+# --- The connection -----------------------------------------------------------
+# The Dockhand server this agent connects back to. It is a URL, not a secret.
+hawser_dockhand_server_url: ""
+
+# THE TOKEN. Must come from the Ansible vault. The role asserts it is set
+# and refuses to write the compose file without it, because a compose file
+# with an empty token would start an agent that can never connect - and would
+# put the token in plaintext in a file in the repository.
+hawser_token: ""
+
+# --- The socket ---------------------------------------------------------------
+# The Docker socket. Hawser needs it to manage this host's containers. It is
+# a WIDE grant - full daemon control - and it is inherent to what hawser is.
+hawser_docker_socket: /var/run/docker.sock
+
+# Where hawser reads its stack definitions from.
+hawser_stacks_dir: /opt/hawser-stacks
+
+# --- Base role variables ------------------------------------------------------
+docker_compose_project_name: "{{ hawser_project_name }}"
+docker_compose_install_docker: false
+docker_compose_data_dirs:
+  - "{{ hawser_stacks_dir }}"
+
+docker_compose_services:
+  hawser:
+    image: "{{ hawser_image }}"
+    container_name: hawser
+    restart: unless-stopped
+    environment:
+      STACKS_DIR: "{{ hawser_stacks_dir }}"
+      DOCKHAND_SERVER_URL: "{{ hawser_dockhand_server_url }}"
+      TOKEN: "{{ hawser_token }}"
+      DOCKER_SOCKET: "{{ hawser_docker_socket }}"
+      PORT: "2376"
+      HEARTBEAT_INTERVAL: "30"
+      REQUEST_TIMEOUT: "30"
+      RECONNECT_DELAY: "1"
+      MAX_RECONNECT_DELAY: "60"
+    volumes:
+      - "{{ hawser_docker_socket }}:{{ hawser_docker_socket }}"
+      - "{{ hawser_stacks_dir }}:/opt/hawser-stacks"

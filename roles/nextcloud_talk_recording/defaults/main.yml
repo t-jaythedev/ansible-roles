@@ -1,0 +1,72 @@
+---
+# Nextcloud Talk recording - as a managed Compose project.
+#
+# This container was already managed by Compose, at /home/tjay/talker-compose.yml,
+# under the project name `tjay`. This role moves it under the estate's single
+# compose root so every project lives in one predictable place.
+#
+# NOTE THE PROJECT NAME. The existing project is `tjay`, and the container
+# is named `tjay-nextcloud-talk-recording-1`. Moving it to a project named
+# `nextcloud_talk_recording` renames the container to
+# `nextcloud_talk_recording-nextcloud-talk-recording-1`, because Compose
+# prefixes the container name with the project name.
+#
+# That is why `nextcloud_talk_recording_container_name` is pinned explicitly
+# below: the container keeps the name it has always had, so anything that
+# refers to it by name - a documentation page, a backup script, a monitoring
+# check - keeps working.
+
+# --- Identity ----------------------------------------------------------------
+nextcloud_talk_recording_project_name: nextcloud_talk_recording
+
+# The container name is PINNED to the one the running container already has.
+# Compose would otherwise prefix it with the project name and produce
+# `nextcloud_talk_recording-nextcloud-talk-recording-1`.
+nextcloud_talk_recording_container_name: tjay-nextcloud-talk-recording-1
+
+# --- Image -------------------------------------------------------------------
+# A locally-built image with a fixed tag. It is NOT on a registry, so it
+# cannot be pulled - the image must already exist on the host.
+nextcloud_talk_recording_image: local/nextcloud-talk-recording:29bad80
+
+# --- Ports -------------------------------------------------------------------
+nextcloud_talk_recording_port: 8000
+
+# --- Data --------------------------------------------------------------------
+# The server configuration is a file bind, read-only. It lives in the user's
+# home directory, NOT in the project directory, because it is configuration
+# that was written by hand and is referenced from elsewhere.
+nextcloud_talk_recording_server_conf: /home/tjay/talker-server.conf
+
+# The recordings directory. This is the service's data - the actual recorded
+# calls - and it stays where it is so a failed migration is a rollback and not
+# a rebuild.
+nextcloud_talk_recording_recordings_dir: /opt/nextcloud-talk-recording/recordings
+
+# --- Base role variables ------------------------------------------------------
+docker_compose_project_name: "{{ nextcloud_talk_recording_project_name }}"
+docker_compose_install_docker: false
+# The migration hook is addressed by ROLE NAME, not by a bare filename.
+# See the base role's prepare.yml for why that matters: a bare name
+# resolves against the base role and can silently pick up another
+# role's hook.
+docker_compose_migration_role: nextcloud_talk_recording
+
+# The compose file the project used to live in. It is left in place as
+# the rollback - nothing but the compose file moves for this service.
+nextcloud_talk_recording_legacy_compose_file: /home/tjay/talker-compose.yml
+docker_compose_data_dirs:
+  - "{{ nextcloud_talk_recording_recordings_dir }}"
+
+docker_compose_services:
+  nextcloud-talk-recording:
+    image: "{{ nextcloud_talk_recording_image }}"
+    container_name: "{{ nextcloud_talk_recording_container_name }}"
+    init: true
+    shm_size: "2gb"
+    restart: unless-stopped
+    ports:
+      - "{{ nextcloud_talk_recording_port }}:{{ nextcloud_talk_recording_port }}"
+    volumes:
+      - "{{ nextcloud_talk_recording_server_conf }}:/etc/nextcloud-talk-recording/server.conf:ro"
+      - "{{ nextcloud_talk_recording_recordings_dir }}:/tmp/recording"

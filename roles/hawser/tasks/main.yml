@@ -1,0 +1,23 @@
+---
+# Hawser - the remote Docker agent for this host.
+#
+# The data bind is absolute and stays where it is, so there is nothing to
+# migrate. The only change is where the compose file lives and how the
+# container is started.
+
+- name: Refuse to write the compose file without the connection token
+  ansible.builtin.assert:
+    that:
+      - hawser_token | length > 0
+      - hawser_dockhand_server_url | length > 0
+    fail_msg: >-
+      hawser_token or hawser_dockhand_server_url is empty. The token is a
+      credential and must come from the Ansible vault, never from a role
+      default. Writing this compose file with an empty token would start an
+      agent that can never connect, and would put a live credential in
+      plaintext in a file on disk and in version control.
+    quiet: true
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

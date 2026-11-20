@@ -42,6 +42,27 @@
 # the directories exist but before the compose file is written and the project
 # is brought up. The hook is a list of task files, included rather than
 # imported, so the caller controls the task names and can use its own vars.
-- name: Run the caller's data migration tasks
-  ansible.builtin.include_tasks: "{{ item }}"
-  loop: "{{ docker_compose_migration_tasks | default([]) }}"
+# A service role that is moving data across provides this hook. It runs after
+# the directories exist but before the compose file is written and the project
+# is brought up.
+#
+# THE HOOK IS PASSED IN AS AN ABSOLUTE PATH BY THE CALLING ROLE.
+#
+# An `include_tasks` inside a role resolves against the role that OWNS THE
+# TASK - which, here, is the BASE role. A bare `migrate_data.yml` is therefore
+# looked for in roles/docker_compose/tasks/, and when it is not there the
+# loader falls back to searching other roles' task directories and picks
+# whichever it finds FIRST. That is how the blog role ended up running the
+# nginx_proxy_manager hook: the wrong file, silently.
+#
+# Addressing the hook by ROLE NAME does not work either. Role defaults leak
+# across `include_role` boundaries, so the base role reads the FIRST role's
+# value - and including that role again makes it include itself, which is an
+# infinite recursion.
+#
+# An ABSOLUTE path cannot be shadowed. The calling role computes it in its own
+# scope, where `role_path` means that role's own directory, and passes it in.
+- name: Run the caller's data migration hook
+  ansible.builtin.include_tasks:
+    file: "{{ docker_compose_migration_hook }}"
+  when: docker_compose_migration_hook | default('') | length > 0
