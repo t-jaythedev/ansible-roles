@@ -80,7 +80,14 @@
   # The label is also the correct question to ask. "Does this PROJECT have a
   # running container?" is what the role needs to know, and the label is what
   # ties a container to its project.
-  ansible.builtin.command:
+  # `ansible.builtin.command` does NOT run a shell, so a pipe is passed to
+  # docker as literal arguments. Use the shell module here - or count in
+  # Jinja. This is why the earlier form failed with:
+  #
+  #   docker: 'docker ps' accepts no arguments
+  #
+  # because the `| wc -l` was handed to docker as if it were more arguments.
+  ansible.builtin.shell:
     cmd: >-
       docker ps --filter label=com.docker.compose.project={{ docker_compose_project_name }}
       --filter status=running -q | wc -l
