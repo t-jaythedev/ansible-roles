@@ -62,6 +62,46 @@
 #
 # An ABSOLUTE path cannot be shadowed. The calling role computes it in its own
 # scope, where `role_path` means that role's own directory, and passes it in.
+# A SECRET IN A SERVICE DEFINITION MUST BE DECRYPTED BEFORE IT IS RENDERED.
+#
+# A value that came from the Ansible vault is not a string - it is an
+# EncryptedString object that still carries the vault tag. When the compose
+# file is rendered with to_nice_yaml, that object is serialised AS AN OBJECT
+# and the literal text "!vault" plus the encrypted ciphertext end up in the
+# compose file on disk:
+#
+#     TOKEN: !vault |
+#       $ANSIBLE_VAULT;1.1;AES256
+#       356564616363373737...          <- ciphertext on disk, no vault password
+#
+# That is a doubly bad outcome. The file is broken - Docker cannot parse it -
+# AND the encrypted secret is sitting there in a readable form on disk and in
+# any git history.
+#
+# Decrypting here, in the BASE role and before the template runs, fixes it
+# once for EVERY role that has a credential in a service definition. The value
+# becomes an ordinary string and the compose file carries the real secret,
+# which is what a compose file is supposed to contain.
+#
+# The substitution is done by a small Python script rather than by Jinja
+# because the thing being substituted is a Python OBJECT, not a string.
+# Jinja stringification of an EncryptedString yields the "!vault" tag text
+# rather than the plaintext - that is the bug this task exists to fix.
+- name: Decrypt any vault-held values in the service definitions
+  ansible.builtin.script:
+    cmd: "{{ role_path }}/files/decrypt_vault_values.py --services-b64 {{ docker_compose_services | to_json | b64encode }}"
+  register: docker_compose_decrypt
+  changed_when: false
+  failed_when: docker_compose_decrypt.rc != 0
+  when: docker_compose_services is defined
+
+- name: Use the decrypted service definitions
+  ansible.builtin.set_fact:
+    docker_compose_services: "{{ docker_compose_decrypt.stdout | from_json }}"
+  when:
+    - docker_compose_decrypt is defined
+    - docker_compose_decrypt.stdout | default("") | trim | length > 0
+
 - name: Run the caller's data migration hook
   ansible.builtin.include_tasks:
     file: "{{ docker_compose_migration_hook }}"

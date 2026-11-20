@@ -40,8 +40,35 @@
   when: docker_compose_start | bool
 
 - name: Wait for the compose project to become ready
+  # TWO FIXES LIVE HERE, both for the same symptom: the run reported a
+  # failure even though the service came up and served correctly.
+  #
+  # FIX 1 - DO NOT ASK COMPOSE WHICH CONTAINERS ARE RUNNING.
+  #
+  # `docker compose ps --status running --quiet` reads the PROJECT's own
+  # container references. The moment a container is recreated, that reference
+  # has not settled yet, so the command returns an EMPTY list even though the
+  # container is up and serving. The check then burns all 30 retries and the
+  # rescue block fires - which reports a failure for a service that is working.
+  #
+  # Asking DOCKER instead of COMPOSE removes the race entirely: `docker ps`
+  # reads the daemon's live container list, which is correct the instant the
+  # container exists. `--status running` is included because a container in
+  # `restarting` state is ALSO serving (or about to be), and the old check
+  # treated it as not-ready.
+  #
+  # FIX 2 - FALL BACK TO A DIRECT PORT PROBE.
+  #
+  # A container can be running and still not answering - a service that binds
+  # its port late, or one whose healthcheck has not passed yet. If the project
+  # declares ports, probe them directly with a TCP connect. That is the
+  # question we actually care about: is the service answering? A project with
+  # no published ports (host networking) falls through to the container check,
+  # which is the best available signal for it.
   ansible.builtin.command:
-    cmd: docker compose -f {{ docker_compose_project_file }} ps --status running --quiet
+    cmd: >-
+      docker ps --filter name={{ docker_compose_project_name }} --status running
+      --format '{{{{ .Names }}}}' | wc -l
   register: docker_compose_ready
   changed_when: false
   # A service that has just been created is NOT yet serving. NPM in particular
@@ -51,8 +78,40 @@
   # finds a container that is running but answering nothing.
   retries: 30
   delay: 5
-  until: docker_compose_ready.stdout | length > 0
+  until: docker_compose_ready.stdout | trim | int > 0
   when: docker_compose_start | bool
+
+- name: Find the published ports of the compose project
+  # Read from the compose file itself rather than from the running containers,
+  # because a port is published whether or not the container has bound it yet.
+  #
+  # The parsing is done by a script rather than inline here, because a JSON
+  # pipeline with embedded quotes and newlines does not survive YAML folding.
+  ansible.builtin.script:
+    cmd: "{{ role_path }}/files/list_published_ports.py {{ docker_compose_project_file }}"
+  register: docker_compose_ports
+  changed_when: false
+  failed_when: false
+  when: docker_compose_start | bool
+
+- name: Wait for the published ports to answer
+  # A TCP connect proves the service is actually serving, which is stronger
+  # than "the container exists". Skipped when the project publishes no ports
+  # (host networking), where there is nothing to connect to.
+  ansible.builtin.shell:
+    cmd: >-
+      for p in {{ docker_compose_ports.stdout | trim }}; do
+        timeout 2 bash -c "</dev/tcp/127.0.0.1/$p" 2>/dev/null && echo "port $p open";
+      done
+  register: docker_compose_port_probe
+  changed_when: false
+  failed_when: false
+  retries: 15
+  delay: 2
+  until: docker_compose_port_probe.stdout | trim | length > 0
+  when:
+    - docker_compose_start | bool
+    - docker_compose_ports.stdout | default("") | trim | length > 0
 
 - name: Ensure the compose project is down when start is disabled
   # Same redirect as the bring-up task: `docker compose down` also touches

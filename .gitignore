@@ -34,3 +34,7 @@ group_vars/**/local.yaml
 .idea/
 .vscode/
 *.swp
+
+# --- python bytecode ---
+__pycache__/
+*.pyc
