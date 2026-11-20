@@ -4,6 +4,19 @@
 # The data directories are relative in the compose file, so they move with the
 # project directory. COPY, never move - the old directory stays intact so a
 # failed migration is a rollback and not a rebuild.
+#
+# THIS HOOK IS IDEMPOTENT. The first run copies the data across and removes
+# the legacy directory; a second run finds the legacy directory GONE and must
+# NOT fail with "Source /opt/searxng/ not found". Copying is skipped when the
+# source no longer exists, and the removal is skipped for the same reason.
+#
+# That matters because the base role runs the hook on EVERY run, and a role
+# that cannot be re-run cannot be trusted to prove `changed=0`.
+
+- name: Check whether the legacy SearXNG directory still exists
+  ansible.builtin.stat:
+    path: "{{ searxng_legacy_dir }}"
+  register: searxng_legacy_dir_stat
 
 - name: Stop the old SearXNG project
   ansible.builtin.command:
@@ -26,13 +39,19 @@
       dest: "{{ docker_compose_root }}/{{ searxng_project_name }}"
   loop_control:
     label: "{{ item.src }}"
-  when: searxng_legacy_dir | default('') | length > 0
+  # SKIPPED when the legacy directory is already gone. The copy is the step
+  # that fails on a re-run, and a re-run must be a no-op, not an error.
+  when:
+    - searxng_legacy_dir_stat.stat.exists | default(false) | bool
+    - searxng_legacy_dir | default('') | length > 0
 
 - name: Remove the old compose project directory
   ansible.builtin.file:
     path: "{{ searxng_legacy_dir }}"
     state: absent
-  when: searxng_legacy_dir | default('') | length > 0
+  when:
+    - searxng_legacy_dir_stat.stat.exists | default(false) | bool
+    - searxng_legacy_dir | default('') | length > 0
 
 - name: Report that the legacy SearXNG project can be brought back
   ansible.builtin.debug:
@@ -40,3 +59,7 @@
       The legacy SearXNG project was at {{ searxng_legacy_compose_file }}.
       Its data was copied, not moved, so the old directory can be restored by
       hand if the new project does not serve correctly.
+      {% if not (searxng_legacy_dir_stat.stat.exists | default(false)) %}
+      The legacy directory is already gone, so there is nothing to copy - this
+      run was a re-run and nothing was changed.
+      {% endif %}

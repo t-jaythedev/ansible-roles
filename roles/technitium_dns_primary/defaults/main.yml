@@ -70,6 +70,8 @@ technitium_dns_primary_data_dir: /opt/technitium/data
 # --- Base role variables ------------------------------------------------------
 docker_compose_project_name: "{{ technitium_dns_primary_project_name }}"
 docker_compose_install_docker: false
+docker_compose_migration_tasks:
+  - migrate_data.yml
 
 docker_compose_services:
   dns:

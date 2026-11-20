@@ -83,9 +83,18 @@ docker_compose_services:
     ports:
       - "{{ searxng_bind_address }}:{{ searxng_port }}:{{ searxng_container_port }}"
     volumes:
-      - "{{ searxng_config_dir }}:/etc/searxng:rw"
-      - "{{ searxng_data_dir }}:/var/cache/searxng:rw"
-      - "{{ searxng_theme_dir }}:/theme:ro"
+      # THE `./` PREFIX IS LOAD-BEARING. Compose treats a SHORT volume name as a
+      # NAMED volume and requires it to be declared in the `volumes:` section -
+      # without it the whole project is rejected with
+      #
+      #   service "searxng" refers to undefined volume config
+      #
+      # The `./` marks the source as a path RELATIVE TO THE COMPOSE FILE, which
+      # is what the original compose file did and what the data migration
+      # copied into the project directory.
+      - "./{{ searxng_config_dir }}:/etc/searxng:rw"
+      - "./{{ searxng_data_dir }}:/var/cache/searxng:rw"
+      - "./{{ searxng_theme_dir }}:/theme:ro"
       - "{{ searxng_package_volume }}:/usr/local/searxng/searx"
     environment:
       SEARXNG_BASE_URL: "{{ searxng_base_url }}"
@@ -105,7 +114,8 @@ docker_compose_services:
     depends_on:
       - searxng
     volumes:
-      - "{{ searxng_theme_dir }}:/theme:ro"
+      # `./` marks a path relative to the compose file - see the note above.
+      - "./{{ searxng_theme_dir }}:/theme:ro"
       - "{{ searxng_package_volume }}:/usr/local/searxng/searx"
     entrypoint: ["/bin/sh", "/theme/apply-theme.sh"]
     logging:

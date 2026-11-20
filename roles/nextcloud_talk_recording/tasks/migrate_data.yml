@@ -10,6 +10,20 @@
 # The OLD COMPOSE FILE IS LEFT IN PLACE. It is the rollback: if the new
 # project does not serve correctly, `docker compose -f
 # /home/tjay/talker-compose.yml up -d` brings the old one straight back.
+#
+# THIS HOOK IS IDEMPOTENT. The old compose file stays on disk as the rollback,
+# so `docker compose down` on it succeeds every time - and reports changed on
+# every time, because Compose reports the containers it removed even when
+# there were none. The hook therefore only runs when the legacy project is
+# actually still up, so a re-run is a genuine no-op.
+
+- name: Check whether the legacy talk-recording project is still running
+  ansible.builtin.command:
+    cmd: docker compose -f {{ nextcloud_talk_recording_legacy_compose_file }} ps --status running --quiet
+  register: nextcloud_talk_recording_legacy_running
+  changed_when: false
+  failed_when: false
+  when: nextcloud_talk_recording_legacy_compose_file | default('') | length > 0
 
 - name: Stop the old talk-recording project
   ansible.builtin.command:
@@ -17,7 +31,12 @@
   register: nextcloud_talk_recording_legacy_down
   changed_when: nextcloud_talk_recording_legacy_down.stdout | length > 0
   failed_when: false
-  when: nextcloud_talk_recording_legacy_compose_file | default('') | length > 0
+  when:
+    - nextcloud_talk_recording_legacy_compose_file | default('') | length > 0
+    # Only stop it if it is actually up. The legacy compose file stays on disk
+    # as the rollback, so `down` would otherwise report changed every run and
+    # the role could never prove `changed=0`.
+    - nextcloud_talk_recording_legacy_running.stdout | default('') | length > 0
 
 - name: Report that the legacy talk-recording project can be brought back
   ansible.builtin.debug:
