@@ -27,12 +27,30 @@
 # A plain `docker ps` lists only RUNNING containers, so a legacy container that
 # a previous failed attempt had already stopped was invisible to this check -
 # the hook skipped the removal, and the conflict happened anyway.
+#
+# THE NAME FILTER ALONE ALSO MATCHES THE COMPOSE-MANAGED CONTAINER.
+#
+# The container this project creates has the SAME NAME as the legacy one -
+# that is the whole point of the migration. So `docker ps -a --filter
+# name=<name>` matches BOTH the legacy container AND the container the compose
+# project created on the previous run.
+#
+# The consequence is that every run stopped and removed the container the
+# project had just created, and then brought it straight back up. The role
+# could never prove `changed=0`, and the service was being churned on every
+# single run - a container restart on a live resolver, every time.
+#
+# The fix is to ask for a container with this name that is NOT managed by
+# compose. A compose-managed container carries the label
+# `com.docker.compose.project`, so filtering for a project label of `none`
+# matches only the containers that have NO compose project - which is
+# exactly the legacy container and nothing else.
 - name: Check whether the legacy Technitium container is still present
   ansible.builtin.command:
     # `-q` prints ONLY the container IDs, with no format template at all. A
     # `--format '{{ .ID }}'` template failed to parse here - Jinja rejects
     # it - and `-q` needs no template, so there is nothing to get wrong.
-    cmd: docker ps -a --filter name=technitium-dns -q
+    cmd: docker ps -a --filter name=technitium-dns --filter label=com.docker.compose.project=none -q
   register: technitium_dns_primary_legacy_container
   changed_when: false
   failed_when: false
