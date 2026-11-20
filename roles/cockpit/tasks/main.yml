@@ -4,6 +4,8 @@
     name:
       - cockpit
       - cockpit-system
+      - cockpit-ws
+      - cockpit-bridge
     state: absent
     purge: true
     autoremove: true
@@ -17,6 +19,15 @@
     masked: true
   failed_when: false
   when: cockpit_remove | bool
+
+- name: Purge leftover Cockpit package configuration
+  ansible.builtin.shell: >-
+    dpkg --purge {{ item }} 2>/dev/null || true
+  loop:
+    - cockpit-ws
+    - cockpit-bridge
+  when: cockpit_remove | bool
+  changed_when: false
 
 - name: Remove Cockpit configuration directory
   ansible.builtin.file:
