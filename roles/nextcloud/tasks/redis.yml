@@ -1,0 +1,23 @@
+---
+- name: Install Redis server
+  ansible.builtin.apt:
+    name: redis-server
+    state: present
+    update_cache: true
+  when: nextcloud_redis_enabled | bool
+
+- name: Ensure Redis is running and enabled
+  ansible.builtin.systemd:
+    name: redis-server
+    state: started
+    enabled: true
+  when: nextcloud_redis_enabled | bool
+
+- name: Ensure Redis is bound to the local unix socket only
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^bind '
+    line: 'bind 127.0.0.1 ::1'
+    state: present
+  notify: Restart redis
+  when: nextcloud_redis_enabled | bool

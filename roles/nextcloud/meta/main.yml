@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: nextcloud
+  author: Dave The Lobster
+  description: Bare metal Nextcloud server - Apache, PHP-FPM, MariaDB and Redis.
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - nextcloud
+    - cloud
+    - php
+dependencies: []

@@ -1,0 +1,96 @@
+---
+- name: Install Apache
+  ansible.builtin.apt:
+    name: apache2
+    state: present
+    update_cache: true
+  when: nextcloud_apache_enabled | bool
+
+- name: Enable Apache modules
+  ansible.builtin.command:
+    cmd: "a2enmod {{ item }}"
+  loop:
+    - rewrite
+    - headers
+    - env
+    - dir
+    - mime
+    - setenvif
+    - proxy
+    - proxy_fcgi
+  register: nextcloud_a2enmod
+  changed_when: "'already enabled' not in nextcloud_a2enmod.stdout"
+  notify: Restart apache
+  when: nextcloud_apache_enabled | bool
+
+- name: Enable the PHP-FPM Apache configuration
+  ansible.builtin.command:
+    cmd: "a2enconf php{{ nextcloud_php_version }}-fpm"
+  register: nextcloud_a2enconf
+  changed_when: "'already enabled' not in nextcloud_a2enconf.stdout"
+  notify: Restart apache
+  when:
+    - nextcloud_apache_enabled | bool
+    - nextcloud_php_fpm_enabled | bool
+
+- name: Disable the mod_php module for this PHP version
+  ansible.builtin.command:
+    cmd: "a2dismod php{{ nextcloud_php_version }}"
+  register: nextcloud_dismod_php
+  failed_when: false
+  changed_when: "'already disabled' not in nextcloud_dismod_php.stdout"
+  notify: Restart apache
+  when: nextcloud_php_fpm_enabled | bool
+
+- name: Switch Apache to the event MPM
+  ansible.builtin.command:
+    cmd: "{{ item }}"
+  loop:
+    - a2dismod mpm_prefork
+    - a2dismod mpm_worker
+    - a2enmod mpm_event
+  register: nextcloud_a2mpm
+  changed_when: "'already enabled' not in nextcloud_a2mpm.stdout and 'already disabled' not in nextcloud_a2mpm.stdout"
+  notify: Restart apache
+  when: nextcloud_apache_enabled | bool
+
+- name: Write the Nextcloud Apache virtual host
+  ansible.builtin.template:
+    src: nextcloud.conf.j2
+    dest: /etc/apache2/sites-available/nextcloud.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart apache
+  when: nextcloud_apache_enabled | bool
+
+- name: Enable the Nextcloud site
+  ansible.builtin.command:
+    cmd: a2ensite nextcloud.conf
+  register: nextcloud_a2ensite
+  changed_when: "'already enabled' not in nextcloud_a2ensite.stdout"
+  notify: Restart apache
+  when: nextcloud_apache_enabled | bool
+
+- name: Disable the default Apache site
+  ansible.builtin.command:
+    cmd: a2dissite 000-default.conf
+  register: nextcloud_a2dissite
+  changed_when: "'already disabled' not in nextcloud_a2dissite.stdout"
+  notify: Restart apache
+  when: nextcloud_apache_enabled | bool
+
+- name: Validate the Apache configuration
+  ansible.builtin.command:
+    cmd: apachectl configtest
+  register: nextcloud_apache_test
+  changed_when: false
+  failed_when: nextcloud_apache_test.rc != 0
+  when: nextcloud_apache_enabled | bool
+
+- name: Ensure Apache is running and enabled
+  ansible.builtin.systemd:
+    name: apache2
+    state: started
+    enabled: true
+  when: nextcloud_apache_enabled | bool

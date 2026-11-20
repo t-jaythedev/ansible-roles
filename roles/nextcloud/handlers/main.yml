@@ -1,0 +1,24 @@
+---
+- name: Restart apache
+  ansible.builtin.systemd:
+    name: apache2
+    state: restarted
+  when: nextcloud_apache_enabled | bool
+
+- name: Restart php-fpm
+  ansible.builtin.systemd:
+    name: "php{{ nextcloud_php_version }}-fpm"
+    state: restarted
+  when: nextcloud_php_fpm_enabled | bool
+
+- name: Restart mariadb
+  ansible.builtin.systemd:
+    name: mariadb
+    state: restarted
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Restart redis
+  ansible.builtin.systemd:
+    name: redis-server
+    state: restarted
+  when: nextcloud_redis_enabled | bool

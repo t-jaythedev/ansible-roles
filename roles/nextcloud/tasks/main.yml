@@ -1,0 +1,106 @@
+---
+- name: Ensure the Nextcloud database password is defined
+  ansible.builtin.assert:
+    that:
+      - nextcloud_db_password | default('', true) | length > 0
+    fail_msg: >-
+      nextcloud_db_password is not defined or is empty. Supply it via
+      Ansible Vault or group_vars; never commit it to this repository.
+    quiet: true
+
+- name: Install the base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Install the PyMySQL Python module
+  ansible.builtin.apt:
+    name: python3-pymysql
+    state: present
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Configure MariaDB
+  ansible.builtin.import_tasks: mariadb.yml
+  tags:
+    - nextcloud
+    - nextcloud_db
+
+- name: Configure Redis
+  ansible.builtin.import_tasks: redis.yml
+  tags:
+    - nextcloud
+    - nextcloud_cache
+
+- name: Configure PHP-FPM
+  ansible.builtin.import_tasks: php.yml
+  tags:
+    - nextcloud
+    - nextcloud_php
+
+- name: Configure Apache
+  ansible.builtin.import_tasks: apache.yml
+  tags:
+    - nextcloud
+    - nextcloud_web
+
+- name: Ensure the Nextcloud web root exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_web_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+- name: Ensure the Nextcloud data directory exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_data_dir }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+- name: Ensure the Nextcloud config directory exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_web_root }}/config"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+- name: Configure Nextcloud with occ
+  ansible.builtin.command:
+    cmd: >-
+      php {{ nextcloud_web_root }}/occ config:system:set
+      {{ item.key }} --value={{ item.value }}
+  become: true
+  become_user: www-data
+  loop:
+    - { key: overwrite.cli.url, value: "https://{{ nextcloud_server_name }}/" }
+    - { key: overwriteprotocol, value: "https" }
+    - { key: datadirectory, value: "{{ nextcloud_data_dir }}" }
+  loop_control:
+    label: "{{ item.key }}"
+  register: nextcloud_occ_config
+  changed_when: "'Config value' in nextcloud_occ_config.stdout"
+  failed_when:
+    - nextcloud_occ_config.rc != 0
+    - nextcloud_occ_config.stdout is not search('Config value')
+  when: nextcloud_occ_installed | bool
+
+- name: Run the Nextcloud background cron job
+  ansible.builtin.cron:
+    name: nextcloud background cron
+    user: www-data
+    minute: "*/5"
+    job: "php {{ nextcloud_web_root }}/occ background:cron"
+    state: present
+  when: nextcloud_occ_installed | bool
+
+- name: Ensure the cron service is configured
+  ansible.builtin.service:
+    name: cron
+    state: started
+    enabled: true

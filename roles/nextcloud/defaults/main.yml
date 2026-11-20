@@ -1,0 +1,64 @@
+---
+# Nextcloud server role - bare metal, Apache + PHP-FPM + MariaDB + Redis.
+#
+# Credentials are NOT in this role. The database password, SMTP password and
+# the Nextcloud instance secret are supplied via Ansible Vault or group_vars
+# in the consuming project. See README.md.
+
+# --- Identity / layout ------------------------------------------------------
+nextcloud_php_version: "8.4"
+nextcloud_data_dir: /var/www/nextcloud/data
+nextcloud_web_root: /var/www/nextcloud
+nextcloud_db_name: nextcloud
+nextcloud_db_user: nextcloud
+
+# Administrative MariaDB account used by the role to create the database and
+# the application user. The MariaDB root account on this host uses password
+# authentication and has no stored credential, so the role authenticates with
+# this dedicated account instead.
+nextcloud_mariadb_admin_user: nextcloud
+
+# --- Services ----------------------------------------------------------------
+nextcloud_apache_enabled: true
+nextcloud_mariadb_enabled: true
+nextcloud_redis_enabled: true
+nextcloud_php_fpm_enabled: true
+
+# --- PHP tuning --------------------------------------------------------------
+nextcloud_php_memory_limit: 1G
+nextcloud_php_upload_max_filesize: 50G
+nextcloud_php_post_max_size: 50G
+nextcloud_php_max_file_uploads: 200
+nextcloud_php_max_execution_time: 3600
+nextcloud_php_timezone: Europe/London
+nextcloud_php_opcache_memory_consumption: 256
+nextcloud_php_opcache_interned_strings_buffer: 64
+
+# FPM pool sizing. These are deliberately conservative: the Nextcloud host is a
+# 2 CPU / 2.9 GB box shared with Apache, MariaDB and Redis. The upstream
+# reference guide assumes a large dedicated server - do not copy its numbers.
+nextcloud_fpm_pm_max_children: 12
+nextcloud_fpm_pm_start_servers: 3
+nextcloud_fpm_pm_min_spare_servers: 3
+nextcloud_fpm_pm_max_spare_servers: 6
+
+# --- MariaDB tuning ----------------------------------------------------------
+nextcloud_mariadb_transaction_isolation: READ-COMMITTED
+nextcloud_mariadb_binlog_format: ROW
+nextcloud_mariadb_slow_query_log: "ON"
+nextcloud_mariadb_long_query_time: 2
+nextcloud_mariadb_innodb_log_file_size: 256M
+nextcloud_mariadb_innodb_buffer_pool_size: 512M
+nextcloud_mariadb_innodb_log_buffer_size: 32M
+nextcloud_mariadb_thread_cache_size: 37
+nextcloud_mariadb_tmp_table_size: 64M
+nextcloud_mariadb_max_heap_table_size: 64M
+
+# --- Apache vhost -----------------------------------------------------------
+nextcloud_server_name: nextcloud.example.com
+nextcloud_hsts_max_age: 15552000
+
+# --- Nextcloud application state ---------------------------------------------
+# Set to false on a host where Nextcloud is not yet installed, so the occ-driven
+# tasks are skipped rather than failing.
+nextcloud_occ_installed: true

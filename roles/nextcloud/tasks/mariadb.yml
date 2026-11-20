@@ -1,0 +1,60 @@
+---
+- name: Install MariaDB server
+  ansible.builtin.apt:
+    name:
+      - mariadb-server
+      - mariadb-client
+    state: present
+    update_cache: true
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Ensure MariaDB is running and enabled
+  ansible.builtin.systemd:
+    name: mariadb
+    state: started
+    enabled: true
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Ensure Nextcloud tuning config directory exists
+  ansible.builtin.file:
+    path: /etc/mysql/mariadb.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Write Nextcloud MariaDB tuning configuration
+  ansible.builtin.template:
+    src: nextcloud.cnf.j2
+    dest: /etc/mysql/mariadb.conf.d/zz-nextcloud-tuning.cnf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mariadb
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Create the Nextcloud database
+  ansible.mysql.mysql_db:
+    name: "{{ nextcloud_db_name }}"
+    encoding: utf8mb4
+    collation: utf8mb4_general_ci
+    login_host: localhost
+    login_user: "{{ nextcloud_mariadb_admin_user }}"
+    login_password: "{{ nextcloud_mariadb_admin_password }}"
+    state: present
+  no_log: true
+  when: nextcloud_mariadb_enabled | bool
+
+- name: Create the Nextcloud database user
+  ansible.mysql.mysql_user:
+    name: "{{ nextcloud_db_user }}"
+    password: "{{ nextcloud_db_password }}"
+    priv: "{{ nextcloud_db_name }}.*:ALL"
+    host: localhost
+    login_host: localhost
+    login_user: "{{ nextcloud_mariadb_admin_user }}"
+    login_password: "{{ nextcloud_mariadb_admin_password }}"
+    state: present
+  no_log: true
+  when: nextcloud_mariadb_enabled | bool

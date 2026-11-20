@@ -1,0 +1,12 @@
+# Managed by Ansible - nextcloud role. Local changes will be overwritten.
+[mysqld]
+transaction_isolation = {{ nextcloud_mariadb_transaction_isolation }}
+binlog_format = {{ nextcloud_mariadb_binlog_format }}
+slow_query_log = {{ nextcloud_mariadb_slow_query_log }}
+long_query_time = {{ nextcloud_mariadb_long_query_time }}
+innodb_log_file_size = {{ nextcloud_mariadb_innodb_log_file_size }}
+innodb_buffer_pool_size = {{ nextcloud_mariadb_innodb_buffer_pool_size }}
+innodb_log_buffer_size = {{ nextcloud_mariadb_innodb_log_buffer_size }}
+thread_cache_size = {{ nextcloud_mariadb_thread_cache_size }}
+tmp_table_size = {{ nextcloud_mariadb_tmp_table_size }}
+max_heap_table_size = {{ nextcloud_mariadb_max_heap_table_size }}

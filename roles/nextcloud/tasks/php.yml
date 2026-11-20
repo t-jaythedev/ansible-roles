@@ -1,0 +1,85 @@
+---
+- name: Install PHP FPM and required modules
+  ansible.builtin.apt:
+    name:
+      - "php{{ nextcloud_php_version }}-fpm"
+      - "php{{ nextcloud_php_version }}-common"
+      - "php{{ nextcloud_php_version }}-curl"
+      - "php{{ nextcloud_php_version }}-xml"
+      - "php{{ nextcloud_php_version }}-gd"
+      - "php{{ nextcloud_php_version }}-imagick"
+      - "php{{ nextcloud_php_version }}-mbstring"
+      - "php{{ nextcloud_php_version }}-zip"
+      - "php{{ nextcloud_php_version }}-mysql"
+      - "php{{ nextcloud_php_version }}-intl"
+      - "php{{ nextcloud_php_version }}-apcu"
+      - "php{{ nextcloud_php_version }}-redis"
+      - "php{{ nextcloud_php_version }}-bcmath"
+      - "php{{ nextcloud_php_version }}-gmp"
+      - imagemagick
+      - exif
+      - bzip2
+    state: present
+    update_cache: true
+  when: nextcloud_php_fpm_enabled | bool
+
+- name: Ensure PHP-FPM is running and enabled
+  ansible.builtin.systemd:
+    name: "php{{ nextcloud_php_version }}-fpm"
+    state: started
+    enabled: true
+  when: nextcloud_php_fpm_enabled | bool
+
+- name: Apply PHP INI tuning
+  ansible.builtin.ini_file:
+    path: "/etc/php/{{ nextcloud_php_version }}/fpm/php.ini"
+    section: "{{ item.section }}"
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    mode: "0644"
+  loop:
+    - { section: PHP, option: memory_limit, value: "{{ nextcloud_php_memory_limit }}" }
+    - { section: PHP, option: upload_max_filesize, value: "{{ nextcloud_php_upload_max_filesize }}" }
+    - { section: PHP, option: post_max_size, value: "{{ nextcloud_php_post_max_size }}" }
+    - { section: PHP, option: max_file_uploads, value: "{{ nextcloud_php_max_file_uploads }}" }
+    - { section: PHP, option: max_execution_time, value: "{{ nextcloud_php_max_execution_time }}" }
+    - { section: PHP, option: date.timezone, value: "{{ nextcloud_php_timezone }}" }
+    - { section: opcache, option: opcache.memory_consumption, value: "{{ nextcloud_php_opcache_memory_consumption }}" }
+    - { section: opcache, option: opcache.interned_strings_buffer, value: "{{ nextcloud_php_opcache_interned_strings_buffer }}" }
+  loop_control:
+    label: "{{ item.option }}={{ item.value }}"
+  notify: Restart php-fpm
+  when: nextcloud_php_fpm_enabled | bool
+
+- name: Apply PHP-FPM pool tuning
+  ansible.builtin.lineinfile:
+    path: "/etc/php/{{ nextcloud_php_version }}/fpm/pool.d/www.conf"
+    regexp: "^{{ item.key }} ="
+    line: "{{ item.key }} = {{ item.value }}"
+    state: present
+  loop:
+    - { key: pm.max_children, value: "{{ nextcloud_fpm_pm_max_children }}" }
+    - { key: pm.start_servers, value: "{{ nextcloud_fpm_pm_start_servers }}" }
+    - { key: pm.min_spare_servers, value: "{{ nextcloud_fpm_pm_min_spare_servers }}" }
+    - { key: pm.max_spare_servers, value: "{{ nextcloud_fpm_pm_max_spare_servers }}" }
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart php-fpm
+  when: nextcloud_php_fpm_enabled | bool
+
+- name: Ensure PHP-FPM environment variables are set in the pool
+  ansible.builtin.lineinfile:
+    path: "/etc/php/{{ nextcloud_php_version }}/fpm/pool.d/www.conf"
+    regexp: "^env\\[{{ item.key }}\\]"
+    line: "env[{{ item.key }}] = {{ item.value }}"
+    state: present
+  loop:
+    - { key: HOSTNAME, value: "$HOSTNAME" }
+    - { key: PATH, value: "/usr/local/bin:/usr/bin:/bin" }
+    - { key: TMP, value: "/tmp" }
+    - { key: TMPDIR, value: "/tmp" }
+    - { key: TEMP, value: "/tmp" }
+  loop_control:
+    label: "env[{{ item.key }}]"
+  notify: Restart php-fpm
+  when: nextcloud_php_fpm_enabled | bool
