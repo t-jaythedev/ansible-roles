@@ -71,6 +71,33 @@ technitium_dns_primary_data_dir: /opt/technitium/data
 docker_compose_project_name: "{{ technitium_dns_primary_project_name }}"
 docker_compose_install_docker: false
 
+# THIS ROLE USES NO NAMED VOLUMES, AND IT SAYS SO EXPLICITLY.
+#
+# Role defaults LEAK across an `include_role` boundary. A role that does not
+# set `docker_compose_volumes` inherits whatever the PREVIOUS role in the same
+# play set - it does not fall back to an empty list.
+#
+# On this host the searxng role runs after the technitium role and sets:
+#
+#     docker_compose_volumes:
+#       - searxng_searxng-pkg
+#
+# so the technitium role was inheriting searxng's volume list and writing
+# this into its own compose file:
+#
+#     volumes:
+#       searxng_searxng-pkg:
+#         name: searxng_searxng-pkg
+#         external: true
+#
+# A compose file that declares a volume it does not use, and that belongs to
+# a different project, is wrong in both directions: it is noise, and it
+# makes the technitium project depend on a volume it has nothing to do with.
+#
+# The empty list is stated HERE so the technitium compose file carries no
+# volumes section at all.
+docker_compose_volumes: []
+
 docker_compose_services:
   dns:
     image: "{{ technitium_dns_primary_image }}"
