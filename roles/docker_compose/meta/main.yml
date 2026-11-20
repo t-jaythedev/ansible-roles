@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: docker_compose
+  author: Dave The Lobster
+  description: >-
+    Base role for Docker Compose projects. Owns the Docker installation and
+    the on-disk layout of compose projects so the estate is predictable.
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+        - questing
+  galaxy_tags:
+    - docker
+    - compose
+dependencies: []

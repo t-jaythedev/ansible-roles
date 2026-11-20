@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: homepage
+  author: Dave The Lobster
+  description: Homepage dashboard as a managed Docker Compose project.
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - docker
+    - dashboard
+dependencies: []

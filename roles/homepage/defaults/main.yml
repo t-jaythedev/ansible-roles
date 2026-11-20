@@ -1,0 +1,63 @@
+---
+# Homepage - the dashboard of containerised services.
+
+homepage_project_name: homepage
+homepage_image: ghcr.io/gethomepage/homepage:latest
+
+# Host port for the dashboard. The container listens on 3000.
+homepage_port: 3100
+
+# Where the dashboard configuration and its widgets live after normalisation.
+homepage_data_dir: >-
+  {{ docker_compose_root }}/{{ homepage_project_name }}/homepage-data
+
+# Homepage needs the Docker socket to show container status and to read the
+# labels of other containers. It is mounted read-only for that reason.
+homepage_docker_socket: /var/run/docker.sock
+
+# The external network the dashboard joins so it can reach other services by
+# container name. It is external because other projects also use it.
+homepage_external_network: dashboard-net
+
+# The legacy location, before normalisation.
+homepage_legacy_data_dir: /home/tjay/homepage/homepage-data
+
+homepage_install_docker: false
+
+# --- Base role variables ---------------------------------------------------
+# These are declared HERE, in this role's defaults, rather than passed in a
+# vars block. A role included as a task cannot be given one - include_role
+# and import_role both reject a vars block outright - while a parent role's
+# defaults ARE visible to the role it includes. Declaring them here is the
+# mechanism that actually works.
+docker_compose_project_name: "{{ homepage_project_name }}"
+docker_compose_install_docker: false
+docker_compose_external_networks:
+  - "{{ homepage_external_network }}"
+docker_compose_data_dirs:
+  - "{{ homepage_data_dir }}"
+docker_compose_migration_tasks:
+  - migrate_data.yml
+docker_compose_services:
+  homepage:
+    image: "{{ homepage_image }}"
+    container_name: homepage
+    restart: unless-stopped
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: "*"
+    ports:
+      - "{{ homepage_port }}:3000"
+    volumes:
+      - "{{ homepage_data_dir }}:/app/config"
+      - "{{ homepage_docker_socket }}:/var/run/docker.sock:ro"
+    networks:
+      - "{{ homepage_project_name }}_default"
+      - "{{ homepage_external_network }}"
+
+docker_compose_legacy:
+  container_name: homepage
+  compose_file: "{{ homepage_legacy_compose_file }}"
+
+# Set to false once this service has been normalised. The migration
+# steps are skipped, so the service is left exactly as it is.
+homepage_migrate_data: true

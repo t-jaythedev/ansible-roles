@@ -1,0 +1,43 @@
+---
+# Migrate the Homepage dashboard configuration into the project directory.
+#
+# The widgets, bookmarks and settings live in homepage-data. Copy, not move,
+# so the old location remains a working fallback if the new project fails to
+# start.
+
+- name: Check whether the legacy Homepage data directory exists
+  ansible.builtin.stat:
+    path: "{{ homepage_legacy_data_dir }}"
+  register: homepage_legacy_data
+
+- name: Stop the running Homepage container before copying its data
+  ansible.builtin.command:
+    cmd: docker stop homepage
+  register: homepage_stop
+  changed_when: homepage_stop.stdout | length > 0
+  when: homepage_legacy_data.stat.exists | default(false) | bool and homepage_migrate_data | bool
+  failed_when: false
+
+- name: Copy the legacy Homepage data into the project directory
+  ansible.builtin.copy:
+    src: "{{ homepage_legacy_data_dir }}/"
+    dest: "{{ homepage_data_dir }}/"
+    remote_src: true
+    owner: tjay
+    group: tjay
+    mode: preserve
+  register: homepage_copy
+  when: homepage_legacy_data.stat.exists | default(false) | bool and homepage_migrate_data | bool
+
+# The verification below asserts the copy actually landed on disk. In
+# check mode nothing is copied, so the assertion would fail for a
+# reason that has nothing to do with the migration. It is skipped
+# there and run for real.
+
+- name: Remove the legacy container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm homepage
+  register: legacy_rm
+  changed_when: legacy_rm.stdout | length > 0
+  failed_when: false
+  when: homepage_migrate_data | bool

@@ -1,0 +1,66 @@
+---
+# Nextcloud Talk signalling server (spreed-signaling).
+#
+# This is the WebSocket signalling server that carries the initial call
+# negotiation for Nextcloud Talk. It was previously a plain docker run
+# container; this role makes it a managed compose project.
+#
+# The server.conf holds the shared secret that both Nextcloud and the
+# signalling server must agree on, along with the session hash and block
+# keys. That file is migrated AS IS from the legacy location rather than
+# regenerated - live secrets are not re-derived by a playbook. It is then
+# Ansible-managed from that point on.
+
+spreed_signaling_project_name: nextcloud_spreed_signaling
+spreed_signaling_image: ghcr.io/strukturag/nextcloud-spreed-signaling:latest
+
+# The port the signalling server publishes on the host.
+#
+# The container listens on 8080 INTERNALLY - server.conf sets
+# `listen = 0.0.0.0:8080` and netstat inside the container confirms it. The
+# host port is published to the same number, so the mapping is 8080:8080.
+spreed_signaling_port: 8080
+
+# The port the container listens on internally. Separate from the host port
+# because the two are not always the same number, and getting it wrong means
+# the WebSocket endpoint silently answers nothing.
+spreed_signaling_container_port: 8080
+
+# Where the signalling configuration lives after normalisation.
+spreed_signaling_config_dir: >-
+  {{ docker_compose_root }}/{{ spreed_signaling_project_name }}/config
+spreed_signaling_config_file: >-
+  {{ spreed_signaling_config_dir }}/server.conf
+
+# The legacy location, before normalisation.
+spreed_signaling_legacy_config_dir: /home/tjay/spreed-signaling
+
+spreed_signaling_install_docker: false
+
+# --- Base role variables ---------------------------------------------------
+# These are declared HERE, in this role's defaults, rather than passed in a
+# vars block. A role included as a task cannot be given one - include_role
+# and import_role both reject a vars block outright - while a parent role's
+# defaults ARE visible to the role it includes. Declaring them here is the
+# mechanism that actually works.
+docker_compose_project_name: "{{ spreed_signaling_project_name }}"
+docker_compose_install_docker: false
+docker_compose_data_dirs:
+  - "{{ spreed_signaling_config_dir }}"
+docker_compose_migration_tasks:
+  - migrate_data.yml
+docker_compose_services:
+  signaling:
+    image: "{{ spreed_signaling_image }}"
+    container_name: spreed-signaling
+    restart: unless-stopped
+    environment:
+      CONFIG: /config/server.conf
+    ports:
+      - "{{ spreed_signaling_port }}:{{ spreed_signaling_container_port }}"
+    volumes:
+      - "{{ spreed_signaling_config_dir }}:/config"
+
+docker_compose_legacy:
+  container_name: spreed-signaling
+  compose_file: ""

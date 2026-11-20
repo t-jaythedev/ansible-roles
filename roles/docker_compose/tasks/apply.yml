@@ -1,0 +1,68 @@
+---
+- name: Write the compose project file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ docker_compose_project_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart compose project
+
+- name: Bring the compose project up
+  # The output is redirected to a file rather than captured through the pipe.
+  #
+  # `docker compose up -d` starts containers that INHERIT the command's stdout
+  # and stderr. Those pipes then stay open for the life of the container, so a
+  # module that waits for EOF on them blocks forever. Ansible's command module
+  # captures exactly that way, and the run hangs at this task with no error -
+  # it is waiting, not failing.
+  #
+  # Redirecting to a file and reading it afterwards closes that hole. The
+  # readiness wait below then confirms the service is actually serving.
+  ansible.builtin.shell:
+    cmd: >-
+      docker compose -f {{ docker_compose_project_file }} up -d --remove-orphans
+      > {{ docker_compose_up_log }} 2>&1;
+      echo rc=$?;
+      cat {{ docker_compose_up_log }}
+  # No chdir here. In check mode the project directory is never actually
+  # created, so a chdir into it fails with ENOENT and masks the real result.
+  # Compose resolves relative paths against the compose file's own directory,
+  # which is exactly what the layout wants anyway.
+  register: docker_compose_up
+  changed_when: >-
+    'Container' in docker_compose_up.stdout or
+    'Recreate' in docker_compose_up.stdout or
+    'Created' in docker_compose_up.stdout or
+    'Started' in docker_compose_up.stdout or
+    'Started' in docker_compose_up.stderr or
+    'Removed' in docker_compose_up.stdout
+  when: docker_compose_start | bool
+
+- name: Wait for the compose project to become ready
+  ansible.builtin.command:
+    cmd: docker compose -f {{ docker_compose_project_file }} ps --status running --quiet
+  register: docker_compose_ready
+  changed_when: false
+  # A service that has just been created is NOT yet serving. NPM in particular
+  # takes around half a minute to finish its own startup (it installs its
+  # Certbot plugins before it binds its admin port). Without this wait, the run
+  # moves on while the service is still coming up, and the next migration
+  # finds a container that is running but answering nothing.
+  retries: 30
+  delay: 5
+  until: docker_compose_ready.stdout | length > 0
+  when: docker_compose_start | bool
+
+- name: Ensure the compose project is down when start is disabled
+  # Same redirect as the bring-up task: `docker compose down` also touches
+  # container pipes, and the same blocking applies.
+  ansible.builtin.shell:
+    cmd: >-
+      docker compose -f {{ docker_compose_project_file }} down
+      > {{ docker_compose_down_log }} 2>&1;
+      echo rc=$?;
+      cat {{ docker_compose_down_log }}
+  register: docker_compose_down
+  changed_when: docker_compose_down.stdout | length > 0
+  when: not (docker_compose_start | bool)

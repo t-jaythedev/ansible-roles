@@ -1,0 +1,67 @@
+---
+# Migrate NPM's persistent data from the legacy home-directory layout into
+# the project directory.
+#
+# COPY, not move. The legacy data stays exactly where it is until the new
+# container has been proven to serve traffic. If anything here fails, the
+# service can be pointed straight back at the old paths and nothing is lost.
+
+- name: Check whether the legacy data directory still exists
+  ansible.builtin.stat:
+    path: "{{ nginx_proxy_manager_legacy_data_dir }}"
+  register: npm_legacy_data
+
+- name: Check whether the legacy letsencrypt directory still exists
+  ansible.builtin.stat:
+    path: "{{ nginx_proxy_manager_legacy_letsencrypt_dir }}"
+  register: npm_legacy_letsencrypt
+
+- name: Stop the running NPM container before copying its data
+  ansible.builtin.command:
+    cmd: docker stop tjay-app-1
+  register: npm_stop
+  changed_when: npm_stop.stdout | length > 0
+  when: npm_legacy_data.stat.exists | default(false) | bool and nginx_proxy_manager_migrate_data | bool
+  failed_when: false
+
+- name: Copy the legacy NPM data into the project directory
+  ansible.builtin.copy:
+    src: "{{ nginx_proxy_manager_legacy_data_dir }}/"
+    dest: "{{ nginx_proxy_manager_data_dir }}/"
+    remote_src: true
+    owner: root
+    group: root
+    mode: preserve
+  register: npm_copy_data
+  when: npm_legacy_data.stat.exists | default(false) | bool and nginx_proxy_manager_migrate_data | bool
+
+- name: Copy the legacy letsencrypt directory into the project directory
+  ansible.builtin.copy:
+    src: "{{ nginx_proxy_manager_legacy_letsencrypt_dir }}/"
+    dest: "{{ nginx_proxy_manager_letsencrypt_dir }}/"
+    remote_src: true
+    owner: root
+    group: root
+    mode: preserve
+  register: npm_copy_le
+  when: npm_legacy_letsencrypt.stat.exists | default(false) | bool
+
+- name: Remove the legacy NPM container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm tjay-app-1
+  register: npm_rm_legacy
+  changed_when: npm_rm_legacy.stdout | length > 0
+  failed_when: false
+
+- name: Verify the NPM database was copied across
+  ansible.builtin.stat:
+    path: "{{ nginx_proxy_manager_data_dir }}/database.sqlite"
+  register: npm_new_db
+  failed_when: >-
+    npm_legacy_data.stat.exists | default(false) | bool and nginx_proxy_manager_migrate_data | bool and
+    not npm_new_db.stat.exists
+  when: not ansible_check_mode
+# The verification below asserts the copy actually landed on disk. In
+# check mode nothing is copied, so the assertion would fail for a
+# reason that has nothing to do with the migration. It is skipped
+# there and run for real.

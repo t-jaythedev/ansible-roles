@@ -1,0 +1,55 @@
+---
+# Homebridge - the Apple HomeKit bridge.
+#
+# Homebridge keeps its accessory database in a named Docker volume rather
+# than a bind mount. The volume is therefore kept as a named volume in the
+# compose file; only its NAME changes with the project, never its contents.
+
+homebridge_project_name: homebridge
+homebridge_image: homebridge/homebridge:ubuntu
+
+# Host port for the HomeKit bridge UI.
+homebridge_port: 8581
+
+# The named volume holding the Homebridge configuration and accessory data.
+homebridge_volume: homebridge_homebridge
+
+# The legacy compose location. The old project lived in a Dockhand-managed
+# directory that has since been renumbered and removed, so the compose file
+# itself no longer exists - only the running container and its volume do.
+homebridge_legacy_project_dir: /data/compose/30
+homebridge_legacy_volume: homebridge_homebridge
+
+homebridge_install_docker: false
+
+# --- Base role variables ---------------------------------------------------
+# These are declared HERE, in this role's defaults, rather than passed in a
+# vars block. A role included as a task cannot be given one - include_role
+# and import_role both reject a vars block outright - while a parent role's
+# defaults ARE visible to the role it includes. Declaring them here is the
+# mechanism that actually works.
+docker_compose_project_name: "{{ homebridge_project_name }}"
+docker_compose_install_docker: false
+docker_compose_migration_tasks:
+  - migrate_data.yml
+docker_compose_services:
+  homebridge:
+    image: "{{ homebridge_image }}"
+    container_name: homebridge
+    restart: always
+    ports:
+      - "{{ homebridge_port }}:8581"
+    volumes:
+      - "{{ homebridge_volume }}:/homebridge"
+
+docker_compose_legacy:
+  container_name: homebridge
+  compose_file: "{{ homebridge_legacy_compose_file }}"
+
+# The named volumes this service mounts. They must be declared so the
+# base role can emit a matching volumes: section - Compose rejects a
+# service that references a volume it cannot find. The volume NAMES are
+# unchanged, so the existing volume is adopted rather than a second,
+# empty one being created.
+docker_compose_volumes:
+  - "{{ homebridge_volume }}"

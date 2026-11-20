@@ -1,0 +1,57 @@
+---
+# Dockhand - the container management UI for the Docker host.
+#
+# Dockhand was previously run as a plain docker run container with no compose
+# project. Its state lives in a named volume, dockhand_data, and it owns the
+# compose project directory tree on the host. Migrating it to a managed
+# compose project means the playbook owns it, and the tree it manages lives
+# under the standard root like everything else.
+
+dockhand_project_name: dockhand
+dockhand_image: fnsys/dockhand:latest
+
+# The named volume holding the Dockhand application state.
+dockhand_volume: dockhand_data
+
+# The port the Dockhand UI is published on. The container listens on 3000.
+dockhand_port: 3000
+
+# The compose project tree Dockhand owns on the host. After normalisation this
+# sits under the standard root rather than in a separate top-level directory.
+dockhand_compose_root: >-
+  {{ docker_compose_root }}/{{ dockhand_project_name }}/projects
+
+dockhand_install_docker: false
+
+# --- Base role variables ---------------------------------------------------
+# These are declared HERE, in this role's defaults, rather than passed in a
+# vars block. A role included as a task cannot be given one - include_role
+# and import_role both reject a vars block outright - while a parent role's
+# defaults ARE visible to the role it includes. Declaring them here is the
+# mechanism that actually works.
+docker_compose_project_name: "{{ dockhand_project_name }}"
+docker_compose_install_docker: false
+docker_compose_migration_tasks:
+  - migrate_data.yml
+docker_compose_services:
+  dockhand:
+    image: "{{ dockhand_image }}"
+    container_name: dockhand
+    restart: unless-stopped
+    ports:
+      - "{{ dockhand_port }}:3000"
+    volumes:
+      - "{{ dockhand_volume }}:/app/data"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+docker_compose_legacy:
+  container_name: dockhand
+  compose_file: ""
+
+# The named volumes this service mounts. They must be declared so the
+# base role can emit a matching volumes: section - Compose rejects a
+# service that references a volume it cannot find. The volume NAMES are
+# unchanged, so the existing volume is adopted rather than a second,
+# empty one being created.
+docker_compose_volumes:
+  - "{{ dockhand_volume }}"

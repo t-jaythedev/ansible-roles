@@ -1,0 +1,9 @@
+---
+- name: Restart compose project
+  ansible.builtin.command:
+    cmd: docker compose -f {{ docker_compose_project_file }} up -d --remove-orphans
+  # No chdir. In check mode the project directory is never actually created,
+  # so a chdir into it fails with ENOENT and takes the run down with it.
+  # Compose resolves relative paths against the compose file's own directory,
+  # which is what the standardised layout wants anyway.
+  listen: Restart compose project

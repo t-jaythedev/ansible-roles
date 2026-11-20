@@ -1,0 +1,47 @@
+---
+- name: Ensure the compose project directory exists
+  ansible.builtin.file:
+    path: "{{ docker_compose_project_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure the project data directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ docker_compose_data_dirs }}"
+
+# External networks are declared as external in the compose file, which means
+# Compose will NOT create them - it expects them to already exist and fails
+# the project start if one is missing. They are therefore created here, in the
+# prepare phase, before the project comes up.
+- name: Check whether each external network exists
+  ansible.builtin.command:
+    cmd: docker network inspect {{ item }}
+  register: docker_compose_network_check
+  changed_when: false
+  failed_when: false
+  loop: "{{ docker_compose_external_networks | default([]) }}"
+
+- name: Create each external network that is missing
+  ansible.builtin.command:
+    cmd: docker network create {{ item.item }}
+  register: docker_compose_network_create
+  changed_when: docker_compose_network_create.stdout | length > 0
+  when: item.rc != 0
+  loop: "{{ docker_compose_network_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# A service role that is moving data across provides this hook. It runs after
+# the directories exist but before the compose file is written and the project
+# is brought up. The hook is a list of task files, included rather than
+# imported, so the caller controls the task names and can use its own vars.
+- name: Run the caller's data migration tasks
+  ansible.builtin.include_tasks: "{{ item }}"
+  loop: "{{ docker_compose_migration_tasks | default([]) }}"

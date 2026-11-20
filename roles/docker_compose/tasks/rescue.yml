@@ -1,0 +1,40 @@
+---
+# Put a service back the way it was if the migration failed.
+#
+# This runs ONLY when something in the apply phase went wrong. Its job is to
+# leave the estate no worse than it found it: the old container is started
+# again on its old paths, so the service is serving again even though the
+# migration did not complete.
+#
+# The service role supplies the legacy details via docker_compose_legacy.
+
+- name: Report that the migration failed and the legacy service is being restored
+  ansible.builtin.debug:
+    msg: >-
+      Bringing up the compose project for {{ docker_compose_project_name }}
+      did not succeed. Restoring the previous container so the service keeps
+      serving while the problem is investigated.
+
+- name: Start the legacy container again
+  ansible.builtin.command:
+    cmd: docker start {{ docker_compose_legacy.container_name }}
+  register: docker_compose_rescue_start
+  changed_when: docker_compose_rescue_start.stdout | length > 0
+  failed_when: false
+  when: docker_compose_legacy.container_name | default('') | length > 0
+
+- name: Start the legacy compose project again if there was one
+  ansible.builtin.command:
+    cmd: docker compose -f {{ docker_compose_legacy.compose_file }} up -d
+  register: docker_compose_rescue_compose
+  changed_when: docker_compose_rescue_compose.stdout | length > 0
+  failed_when: false
+  when: docker_compose_legacy.compose_file | default('') | length > 0
+
+- name: Fail with a clear message about the failed migration
+  ansible.builtin.fail:
+    msg: >-
+      The compose project {{ docker_compose_project_name }} could not be brought
+      up. The previous container has been restarted so the service is still
+      serving. Fix the project and re-run; the migration is safe to repeat
+      because data is copied rather than moved.

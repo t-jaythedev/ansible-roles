@@ -1,0 +1,51 @@
+---
+# The Docker Compose base role.
+#
+# Split into phases so a service role can slot its own work in at the right
+# moment:
+#
+#   install   - Docker Engine and the Compose plugin
+#   prepare   - directories, external networks, and any data migration
+#   apply     - write the compose file and bring the project up
+#   rescue    - put the OLD service back if the new one did not come up
+#
+# The migration phase exists because a service that is moving its data needs
+# that to happen BEFORE the container starts against the new paths. The old
+# container must be stopped, the data copied across, and only then does the
+# project come up. Doing it the other way round would start a container
+# against an empty directory and quietly destroy a service's state.
+#
+# The rescue phase exists because a migration touches a LIVE service. If
+# anything between stopping the old container and starting the new one fails,
+# the service must be put back on its old paths. Without that, a failed
+# migration leaves a service down, which is worse than the problem it was
+# meant to fix.
+
+- name: Install Docker Engine and the Compose plugin
+  ansible.builtin.import_tasks: install.yml
+  tags:
+    - docker_compose
+    - docker_compose_install
+
+- name: Prepare the project layout and migrate any data
+  ansible.builtin.import_tasks: prepare.yml
+  tags:
+    - docker_compose
+    - docker_compose_prepare
+
+# The bring-up runs in a block so that a failure can be caught and the legacy
+# service put back. Without the block/rescue, any failure here propagates and
+# leaves the service stopped.
+- name: Write the compose file and bring the project up
+  block:
+    - name: Write the compose file and bring the project up
+      ansible.builtin.import_tasks: apply.yml
+      tags:
+        - docker_compose
+        - docker_compose_apply
+  rescue:
+    - name: Put the legacy service back on its original paths
+      ansible.builtin.include_tasks: rescue.yml
+      tags:
+        - docker_compose
+        - docker_compose_rescue

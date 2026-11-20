@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: nginx_proxy_manager
+  author: Dave The Lobster
+  description: Nginx Proxy Manager as a managed Docker Compose project.
+  license: MIT
+  min_ansible_version: '2.15'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - docker
+    - nginx
+    - proxy
+dependencies:
+  - role: docker_compose
+    tasks_from: main.yml

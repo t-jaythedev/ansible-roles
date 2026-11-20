@@ -1,0 +1,74 @@
+---
+# docker_compose base role - owns the Docker installation and the layout of
+# every compose project on the host.
+#
+# The point of this role is that the estate becomes PREDICTABLE. Every
+# compose project lives under one root, at one depth, named after the project.
+# A role that installs a service points at that root; it never invents a path
+# of its own. That is what lets a later role be written without reading the
+# host first.
+#
+# Credentials are never in this role. Any secret a service needs is supplied
+# via Ansible Vault or group_vars in the consuming project.
+
+# --- Layout ----------------------------------------------------------------
+# The single root under which every compose project directory lives.
+docker_compose_root: /opt/compose
+
+# --- Docker ----------------------------------------------------------------
+docker_compose_install_docker: true
+docker_compose_docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# The apt repository Docker Engine is installed from. Kept as a variable so a
+# distro- or mirror-specific estate can point elsewhere.
+docker_compose_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
+docker_compose_apt_repository: https://download.docker.com/linux/ubuntu
+
+# --- Behaviour -------------------------------------------------------------
+# The name of the compose project. The calling role MUST set this; the base
+# role uses it to derive every path.
+#
+# It deliberately has no default. Role defaults sit at a higher precedence
+# than the vars passed to include_role, so a default here would silently win
+# over the caller value and produce an empty project name - and therefore a
+# path like /opt/compose//compose.yml. The assertion in the role first task
+# catches that case loudly instead.
+
+# Where the compose project is written. Derived from docker_compose_root and
+# the project name so callers cannot accidentally scatter projects again.
+docker_compose_project_dir: >-
+  {{ docker_compose_root }}/{{ docker_compose_project_name }}
+
+# The compose file itself. Named consistently so tooling and humans can find
+# it without guessing.
+docker_compose_project_file: >-
+  {{ docker_compose_project_dir }}/compose.yml
+
+# Set to false to manage the compose file but NOT run it. Useful for a service
+# that should be defined but left stopped.
+docker_compose_start: true
+
+# Extra directories the role creates alongside the project. Services use this
+# for their persistent data so the data outlives the project directory.
+docker_compose_data_dirs: []
+
+# Set to false to leave the host's Docker installation alone. Use this when
+# the role is only managing compose projects on an existing Docker host.
+docker_compose_manage_docker_service: true
+
+# --- Output redirection ------------------------------------------------------
+# The compose commands write their output to these files rather than being
+# captured through a pipe. A container started by `docker compose up -d`
+# inherits the command's stdout and stderr, so the pipe stays open for the
+# life of the container and a module that waits for EOF on it blocks forever.
+# Redirecting to a file closes that hole. The files live in the project
+# directory so they are alongside the project they describe.
+docker_compose_up_log: >-
+  {{ docker_compose_project_dir }}/compose-up.log
+docker_compose_down_log: >-
+  {{ docker_compose_project_dir }}/compose-down.log

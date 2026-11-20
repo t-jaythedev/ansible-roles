@@ -1,0 +1,6 @@
+---
+# Homepage - the dashboard of containerised services.
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

@@ -1,0 +1,39 @@
+---
+# Migrate Homebridge off the Dockhand-managed compose directory.
+#
+# Homebridge's configuration lives in a NAMED Docker volume
+# (homebridge_homebridge), not a bind mount. The volume name is therefore kept
+# exactly as it is - only the compose project that mounts it moves. Nothing
+# inside the volume is copied or altered, so the accessory database is
+# untouched by this migration.
+#
+# The old compose file lived in a Dockhand-managed directory that Dockhand has
+# since renumbered and removed, so the file itself no longer exists. Only the
+# running container and its volume do. The container must therefore be
+# REMOVED before the new project comes up, or docker compose up fails with a
+# name conflict.
+
+- name: Check whether the legacy Homebridge container is still present
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect homebridge --format
+      {% raw %}'{{.State.Status}}'{% endraw %}
+  register: homebridge_legacy_container
+  changed_when: false
+  failed_when: false
+
+- name: Stop the legacy Homebridge container
+  ansible.builtin.command:
+    cmd: docker stop homebridge
+  register: homebridge_stop
+  changed_when: homebridge_stop.stdout | length > 0
+  failed_when: false
+  when: homebridge_legacy_container.stdout | default('') | length > 0
+
+- name: Remove the legacy container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm homebridge
+  register: homebridge_rm
+  changed_when: homebridge_rm.stdout | length > 0
+  failed_when: false
+  when: homebridge_legacy_container.stdout | default('') | length > 0

@@ -1,0 +1,57 @@
+{#- The compose file for {{ docker_compose_project_name }}.
+    Rendered by the docker_compose base role. The service definitions are
+    supplied by the consuming role via docker_compose_services.
+
+    Networks are declared explicitly rather than relying on Compose's implicit
+    project default. A service that joins a network by name needs that name
+    to exist in this file, or Compose refuses the whole project with
+    "refers to undefined network".
+
+    The project default network is declared with an explicit `name:` and NO
+    external flag, so Compose adopts an existing network of that name if one
+    is already present. A network that Compose created itself carries the
+    label com.docker.compose.network set to the KEY it was declared under; if
+    that key and the name disagree, Compose refuses to reuse it. Declaring
+    both identically avoids the mismatch. -#}
+services:
+{{ docker_compose_services | default({}) | to_nice_yaml(indent=2) | indent(2, true) }}
+
+networks:
+  # The project default network is declared under the key
+  # <project>_default, which is the name a service references it by. Compose
+  # resolves a service's network reference against the KEY, not the `name:` - a
+  # service that lists `homepage_default` in its networks block needs that
+  # string to be a key in this file, or the whole project is rejected with
+  # "refers to undefined network".
+  #
+  # The `name:` matches the key, so the network keeps a stable name across the
+  # migration and any network created by an older compose file can be adopted.
+  {{ docker_compose_project_name }}_default:
+    name: {{ docker_compose_project_name }}_default
+{% for net in docker_compose_external_networks | default([]) %}
+  {{ net }}:
+    name: {{ net }}
+    external: true
+{% endfor %}
+
+{% if docker_compose_volumes | default([]) | length > 0 %}
+volumes:
+  # Named volumes are declared explicitly, for the same reason as networks:
+  # Compose resolves a service's volume reference against the KEY declared
+  # here, and rejects the project with "refers to undefined volume" when it
+  # cannot find one. A service that mounts `homebridge_homebridge` needs that
+  # string to be a key in this file.
+  #
+  # The `name:` matches the key, so a volume created by an older compose file
+  # is adopted rather than a second, empty volume being created.
+  #
+  # external: true is required because these volumes predate Compose's
+  # management of them. Compose refuses to adopt a volume it did not create
+  # unless it is marked external, and the data in them is the service's own
+  # state - it must be adopted, never replaced.
+{% for vol in docker_compose_volumes | default([]) %}
+  {{ vol }}:
+    name: {{ vol }}
+    external: true
+{% endfor %}
+{% endif %}

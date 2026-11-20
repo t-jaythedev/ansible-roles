@@ -1,0 +1,12 @@
+---
+# Nextcloud Talk signalling server (spreed-signaling).
+#
+# The server.conf holds the shared secret that both Nextcloud and the
+# signalling server must agree on, along with the session hash and block
+# keys. That file is migrated AS IS from the legacy location rather than
+# regenerated - live secrets are not re-derived by a playbook. It is then
+# Ansible-managed from that point on.
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

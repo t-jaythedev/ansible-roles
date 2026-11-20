@@ -1,0 +1,42 @@
+---
+- name: Ensure the compose project name is defined
+  ansible.builtin.assert:
+    that:
+      - docker_compose_project_name | default('', true) | length > 0
+    fail_msg: >-
+      docker_compose_project_name is not defined. The role that includes
+      docker_compose must pass it, either as a role var or through the
+      include_role vars block.
+    quiet: true
+
+- name: Ensure the Docker apt keyring is present
+  ansible.builtin.get_url:
+    url: "{{ docker_compose_apt_key_url }}"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+    force: true
+  when: docker_compose_install_docker | bool
+
+- name: Ensure the Docker apt repository is configured
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+      {{ docker_compose_apt_repository }} {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+    update_cache: true
+  when: docker_compose_install_docker | bool
+
+- name: Install Docker Engine and the Compose plugin
+  ansible.builtin.apt:
+    name: "{{ docker_compose_docker_packages }}"
+    state: present
+    update_cache: true
+  when: docker_compose_install_docker | bool
+
+- name: Ensure the Docker service is enabled and running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  when: docker_compose_manage_docker_service | bool

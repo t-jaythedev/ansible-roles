@@ -1,0 +1,6 @@
+---
+# Homebridge - the Apple HomeKit bridge.
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

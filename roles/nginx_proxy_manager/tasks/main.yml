@@ -1,0 +1,38 @@
+---
+# Nginx Proxy Manager - the reverse proxy in front of the estate.
+#
+# NPM keeps everything that matters in ONE place: the /data volume holds the
+# SQLite database of proxy hosts and certificates, the generated nginx
+# configuration, and the TLS private keys. Losing /data means losing every
+# proxy host and every certificate. This role therefore treats that data as
+# precious: it never recreates it from scratch, it only relocates it.
+#
+# The order of the work matters and is deliberate:
+#
+#   1. stop the existing container
+#   2. copy the data across to the new location (copy, not move - the old
+#      location stays intact until the new one is proven working)
+#   3. write the new compose file
+#   4. bring the project up on the new paths
+#
+# A copy rather than a move is used on purpose. If the new container fails to
+# start, the old data is still exactly where it was and the service can be
+# pointed back at it. The cost is a little disk; the benefit is that a failed
+# migration is a rollback rather than a rebuild.
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose
+
+- name: Remove the legacy NPM compose file
+  ansible.builtin.file:
+    path: "{{ nginx_proxy_manager_legacy_compose_file }}"
+    state: absent
+  when: nginx_proxy_manager_migrate_data | bool
+
+- name: Remove the legacy NPM container
+  ansible.builtin.command:
+    cmd: docker rm tjay-app-1
+  register: npm_rm
+  changed_when: npm_rm.stdout | length > 0
+  failed_when: false

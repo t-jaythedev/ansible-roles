@@ -1,0 +1,6 @@
+---
+# Dockhand - the container management UI for the Docker host.
+
+- name: Include the Docker Compose base role
+  ansible.builtin.include_role:
+    name: docker_compose

@@ -1,0 +1,35 @@
+---
+# Migrate Dockhand from a plain docker run container to a managed compose
+# project.
+#
+# Dockhand's state lives in a NAMED Docker volume (dockhand_data). The volume
+# name is kept exactly as it is, so nothing inside it is copied or altered -
+# only the way the container is launched changes.
+#
+# The container must be REMOVED before the new project comes up, or docker
+# compose up fails with a name conflict.
+
+- name: Check whether the legacy Dockhand container is still present
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect dockhand --format
+      {% raw %}'{{.State.Status}}'{% endraw %}
+  register: dockhand_legacy_container
+  changed_when: false
+  failed_when: false
+
+- name: Stop the legacy Dockhand container
+  ansible.builtin.command:
+    cmd: docker stop dockhand
+  register: dockhand_stop
+  changed_when: dockhand_stop.stdout | length > 0
+  failed_when: false
+  when: dockhand_legacy_container.stdout | default('') | length > 0
+
+- name: Remove the legacy container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm dockhand
+  register: dockhand_rm
+  changed_when: dockhand_rm.stdout | length > 0
+  failed_when: false
+  when: dockhand_legacy_container.stdout | default('') | length > 0

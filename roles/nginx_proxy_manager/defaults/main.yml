@@ -1,0 +1,74 @@
+---
+# Nginx Proxy Manager - the reverse proxy in front of the estate.
+#
+# NPM keeps everything that matters in ONE place: the /data volume holds the
+# SQLite database of proxy hosts and certificates, the generated nginx
+# configuration, and the TLS private keys. Losing /data means losing every
+# proxy host and every certificate. This role therefore treats that data as
+# precious: it never recreates it from scratch, it only relocates it.
+
+# The compose project name. Also the directory name under docker_compose_root.
+nginx_proxy_manager_project_name: nginx_proxy_manager
+
+# The image to run.
+nginx_proxy_manager_image: jc21/nginx-proxy-manager:2.17.0
+
+# Host ports. 80/443 for the proxy, 81 for the admin UI.
+nginx_proxy_manager_http_port: 80
+nginx_proxy_manager_https_port: 443
+nginx_proxy_manager_admin_port: 81
+
+# Where the persistent data lives after normalisation. Both the application
+# data and the certificates live under the project directory so the whole
+# service is one movable unit.
+nginx_proxy_manager_data_dir: >-
+  {{ docker_compose_root }}/{{ nginx_proxy_manager_project_name }}/data
+nginx_proxy_manager_letsencrypt_dir: >-
+  {{ docker_compose_root }}/{{ nginx_proxy_manager_project_name }}/letsencrypt
+
+# Timezone for the container clock and logs.
+nginx_proxy_manager_timezone: Europe/London
+
+# Set to false to leave the host's existing Docker installation alone.
+nginx_proxy_manager_install_docker: false
+
+# Set to false to skip moving data from the old layout. Only useful when a host
+# has already been normalised.
+nginx_proxy_manager_migrate_data: true
+
+# The old locations to migrate FROM, when the host has not been normalised.
+nginx_proxy_manager_legacy_compose_file: /home/tjay/docker-compose.yml
+nginx_proxy_manager_legacy_data_dir: /home/tjay/data
+nginx_proxy_manager_legacy_letsencrypt_dir: /home/tjay/letsencrypt
+
+# --- Base role variables ---------------------------------------------------
+# These are declared HERE, in this role's defaults, rather than passed in a
+# vars block. A role included as a task cannot be given one - include_role
+# and import_role both reject a vars block outright - while a parent role's
+# defaults ARE visible to the role it includes. Declaring them here is the
+# mechanism that actually works.
+docker_compose_project_name: "{{ nginx_proxy_manager_project_name }}"
+docker_compose_install_docker: false
+docker_compose_data_dirs:
+  - "{{ nginx_proxy_manager_data_dir }}"
+  - "{{ nginx_proxy_manager_letsencrypt_dir }}"
+docker_compose_migration_tasks:
+  - migrate_data.yml
+docker_compose_services:
+  app:
+    image: "{{ nginx_proxy_manager_image }}"
+    container_name: tjay-app-1
+    restart: unless-stopped
+    environment:
+      TZ: "{{ nginx_proxy_manager_timezone }}"
+    ports:
+      - "{{ nginx_proxy_manager_http_port }}:80"
+      - "{{ nginx_proxy_manager_admin_port }}:81"
+      - "{{ nginx_proxy_manager_https_port }}:443"
+    volumes:
+      - "{{ nginx_proxy_manager_data_dir }}:/data"
+      - "{{ nginx_proxy_manager_letsencrypt_dir }}:/etc/letsencrypt"
+
+docker_compose_legacy:
+  container_name: tjay-app-1
+  compose_file: "{{ nginx_proxy_manager_legacy_compose_file }}"

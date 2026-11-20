@@ -1,0 +1,53 @@
+---
+# Migrate the Talk signalling configuration into the project directory.
+#
+# The existing server.conf holds live secrets - the shared secret with
+# Nextcloud, the session hash and block keys - and the real Nextcloud domain.
+# It is therefore copied across AS IS rather than regenerated from a
+# template. Regenerating it from scratch would mean re-deriving live secrets
+# and risking a signalling server that no longer agrees with Nextcloud.
+#
+# Once migrated, the file is Ansible-managed; this task only runs while the
+# legacy directory still exists.
+
+- name: Check whether the legacy signalling config directory exists
+  ansible.builtin.stat:
+    path: "{{ spreed_signaling_legacy_config_dir }}"
+  register: spreed_legacy_config
+
+- name: Stop the running signalling container before copying its config
+  ansible.builtin.command:
+    cmd: docker stop spreed-signaling
+  register: spreed_stop
+  changed_when: spreed_stop.stdout | length > 0
+  when: spreed_legacy_config.stat.exists | default(false) | bool
+  failed_when: false
+
+- name: Copy the legacy signalling configuration into the project directory
+  ansible.builtin.copy:
+    src: "{{ spreed_signaling_legacy_config_dir }}/"
+    dest: "{{ spreed_signaling_config_dir }}/"
+    remote_src: true
+    mode: preserve
+  register: spreed_copy
+  when: spreed_legacy_config.stat.exists | default(false) | bool
+
+- name: Remove the legacy signalling container so its name is free
+  ansible.builtin.command:
+    cmd: docker rm spreed-signaling
+  register: spreed_rm
+  changed_when: spreed_rm.stdout | length > 0
+  failed_when: false
+
+- name: Verify the signalling configuration was copied across
+  ansible.builtin.stat:
+    path: "{{ spreed_signaling_config_file }}"
+  register: spreed_new_config
+  failed_when: >-
+    spreed_legacy_config.stat.exists | default(false) | bool and
+    not spreed_new_config.stat.exists
+  when: not ansible_check_mode
+# The verification below asserts the copy actually landed on disk. In
+# check mode nothing is copied, so the assertion would fail for a
+# reason that has nothing to do with the migration. It is skipped
+# there and run for real.
