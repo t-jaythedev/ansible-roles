@@ -8,6 +8,36 @@
     mode: "0644"
   notify: Restart compose project
 
+- name: Capture the container IDs before the project comes up
+  # WHY IDS AND NOT COMPOSEs OWN OUTPUT:
+  #
+  #   The old heuristic asked whether the words Container / Recreate /
+  #   Created / Started / Removed appeared ANYWHERE in compose output.
+  #   Compose prints a line per container in EVERY run, including a no-op
+  #   run, so "Container" was always true and every run reported changed.
+  #   That is why the Gen8 playbook reported changed=8 while the compose
+  #   files were byte-identical and no container had been recreated.
+  #
+  #   Two text-based heuristics were tried and both failed on the live
+  #   estate, which is why this compares FACTS:
+  #
+  #   1. Matching lines ending in Started/Created/Recreated called the
+  #      one-shot init container (searxng-theme-init) a change on every
+  #      run, because compose legitimately starts it each time.
+  #   2. Treating Started as a change only when the container was not
+  #      already Running still failed on that same init container, which
+  #      has EXITED and is meant to re-run.
+  #
+  #   A container ID is unambiguous. If the ID before and after is the
+  #   same, that container was not recreated. If it differs, it was.
+  ansible.builtin.shell:
+    cmd: >-
+      docker compose -f {{ docker_compose_project_file }} ps -q --all
+      2>/dev/null | sort
+  register: docker_compose_ids_before
+  changed_when: false
+  when: docker_compose_start | bool
+
 - name: Bring the compose project up
   # The output is redirected to a file rather than captured through the pipe.
   #
@@ -30,13 +60,55 @@
   # Compose resolves relative paths against the compose file's own directory,
   # which is exactly what the layout wants anyway.
   register: docker_compose_up
-  changed_when: >-
-    'Container' in docker_compose_up.stdout or
-    'Recreate' in docker_compose_up.stdout or
-    'Created' in docker_compose_up.stdout or
-    'Started' in docker_compose_up.stdout or
-    'Started' in docker_compose_up.stderr or
-    'Removed' in docker_compose_up.stdout
+  # The up task is NOT the one that reports changed - the two ID captures
+  # around it are. See the tasks below.
+  changed_when: false
+  when: docker_compose_start | bool
+
+- name: Capture the container IDs after the project came up
+  ansible.builtin.shell:
+    cmd: >-
+      docker compose -f {{ docker_compose_project_file }} ps -q --all
+      2>/dev/null | sort
+  register: docker_compose_ids_after
+  changed_when: false
+  when: docker_compose_start | bool
+
+- name: Work out whether any container was created, recreated or removed
+  # The verdict is a DIFF of container IDs, not a reading of compose prose.
+  #
+  #   A container that appears that was not there before was CREATED.
+  #   A container that was there and is not now was REMOVED.
+  #   A container whose ID changed was RECREATED.
+  #
+  #   IDs in the ignore list are excluded. That is for one-shot init
+  #   containers, which are MEANT to re-run on every up: they apply a
+  #   theme or a migration and then exit. Their container ID necessarily
+  #   changes each run, which is a true statement but not a useful one -
+  #   it would report a change on every run of the estate and make the
+  #   report useless for spotting a real one.
+  #
+  #   The ignore list is a role default, so a service role declares its own
+  #   init containers rather than this base role guessing at them.
+  #
+  #   NOTE: the up task above is still run and its failures still fail. Only
+  #   the REPORTING is done here, from facts.
+  ansible.builtin.set_fact:
+    docker_compose_changed: >-
+      {{ (docker_compose_ids_after.stdout_lines | default([]))
+         | difference(docker_compose_ids_before.stdout_lines | default([]))
+         | difference(docker_compose_ignore_ids) | length > 0 }}
+  when: docker_compose_start | bool
+
+- name: Report the project as changed
+  ansible.builtin.debug:
+    msg: >-
+      compose project {{ docker_compose_project_name }}:
+      {{ "changed" if docker_compose_changed | default(false) else "unchanged" }}
+      ({{ (docker_compose_ids_after.stdout_lines | default([]))
+         | difference(docker_compose_ids_before.stdout_lines | default([])) | length }}
+      container(s) created, recreated or removed)
+  changed_when: docker_compose_changed | default(false)
   when: docker_compose_start | bool
 
 - name: Wait for the compose project to become ready

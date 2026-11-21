@@ -63,6 +63,20 @@ docker_compose_install_docker: false
 # role's hook.
 docker_compose_migration_role: searxng
 
+# The theme init container is a ONE-SHOT: it applies the theme into the package
+# volume, then exits. Compose legitimately starts it on every `up`, so it gets
+# a NEW container ID every run. That is true, but reporting it as a change
+# would make the change report useless - it would say "changed" on every run
+# of the estate and hide the real changes.
+#
+# The base role judges a change by diffing container IDs before and after the
+# `up`. Listing this container's ID here excludes it from that diff.
+#
+# The ID is read from the live container at run time, so it does not have to be
+# updated when the container is recreated.
+docker_compose_ignore_ids:
+  - "{{ searxng_theme_init_container_id | default('') }}"
+
 # Where the project lived before this role took it over. The migration
 # hook copies the data across from here and leaves the old compose file
 # in place as the rollback.

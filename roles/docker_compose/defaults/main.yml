@@ -53,6 +53,35 @@ docker_compose_project_file: >-
 # that should be defined but left stopped.
 docker_compose_start: true
 
+# Container IDs to EXCLUDE when deciding whether a compose project changed.
+#
+# The base role judges a change by diffing container IDs before and after the
+# `up`. That is a fact, not a reading of compose's prose - and it is the only
+# version that survives the live estate, because two text-based heuristics were
+# tried and both failed:
+#
+#   1. Matching compose output lines ending in Started/Created/Recreated
+#      called the one-shot init container (searxng-theme-init) a change on
+#      every run, because compose legitimately starts it each time.
+#   2. Treating Started as a change only when the container was not already
+#      Running still failed on that same init container, which has EXITED and
+#      is meant to re-run.
+#
+# A one-shot init container DOES get a new ID on every run - it applies a
+# theme or a migration and then exits. That is true, but it is not useful: it
+# would report a change on every run of the estate and make the report useless
+# for spotting a real one.
+#
+# So a service role declares its own init containers here, by ID, and the base
+# role ignores them when reporting. The base role does not guess at them.
+#
+#   docker_compose_ignore_ids:
+#     - <container-id-of-the-init-container>
+#
+# Leave empty to report EVERY container that appeared, disappeared or was
+# recreated - including init containers.
+docker_compose_ignore_ids: []
+
 # Extra directories the role creates alongside the project. Services use this
 # for their persistent data so the data outlives the project directory.
 docker_compose_data_dirs: []

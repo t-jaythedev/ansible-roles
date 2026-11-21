@@ -28,6 +28,29 @@
   ansible.builtin.set_fact:
     docker_compose_migration_hook_fact: "{{ role_path }}/tasks/migrate_data.yml"
 
+# The theme init container is a ONE-SHOT and gets a NEW container ID on every
+# `up`. The base role reports a change by diffing container IDs before and
+# after the run, so this container's ID is read from the live container and
+# handed to the base role as an ignore - otherwise every run of the estate
+# would report a change and the report would be useless.
+#
+# Read from the container NAMED in the compose file, via the docker daemon.
+#
+# `-q` prints ONLY the container ID, with no format template. A
+# `--format '{{ .ID }}'` Go template fails to parse here - Jinja rejects it.
+# The base role's technitium hook records the same lesson.
+# which is correct whether the container is running or has already exited.
+- name: Read the ID of the theme init container so it can be ignored
+  ansible.builtin.shell:
+    cmd: >-
+      docker ps -a --filter name=^/searxng-theme-init$ -q | head -1
+  register: searxng_theme_init_lookup
+  changed_when: false
+
+- name: Record the theme init container ID to ignore in the change report
+  ansible.builtin.set_fact:
+    searxng_theme_init_container_id: "{{ searxng_theme_init_lookup.stdout | trim }}"
+
 - name: Include the Docker Compose base role
   ansible.builtin.include_role:
     name: docker_compose
