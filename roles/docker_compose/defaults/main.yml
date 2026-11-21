@@ -53,6 +53,27 @@ docker_compose_project_file: >-
 # that should be defined but left stopped.
 docker_compose_start: true
 
+# The mode of the rendered compose file.
+#
+# 0600 by default, and that is deliberate. A compose file can hold a SECRET IN
+# PLAINTEXT - the hawser project writes its connection token into it,
+# decrypted from the vault, because that is what a compose file is supposed
+# to contain and the running container needs it.
+#
+# At 0644 that secret was world-readable: any account on the host could read
+# the token out of the file. The file's permissions were the ONLY protection
+# the secret had.
+#
+# The trade-off was Dockhand reading the stack definitions. That trade-off does
+# not exist - Dockhand runs on the Docker VM (192.168.1.241), not on the host
+# that owns these projects, and it mounts only the Docker socket and its own
+# data volume. It has no read path to /opt/compose at all.
+#
+# Nothing on the host needs to read the file except root, which runs docker
+# compose. So 0600. A project that genuinely needs wider access can set this
+# explicitly rather than 0644 being the default for everyone.
+docker_compose_file_mode: "0600"
+
 # Container IDs to EXCLUDE when deciding whether a compose project changed.
 #
 # The base role judges a change by diffing container IDs before and after the
